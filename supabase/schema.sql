@@ -85,6 +85,9 @@ create table public.competitions (
   name text not null check (char_length(name) between 1 and 80),
   kind text not null default 'Intramurals',
   medal_points numeric[] not null default '{5,3,1}',
+  logo_url text,
+  background_url text,
+  accent_color text check (accent_color is null or accent_color ~ '^#[0-9a-fA-F]{6}$'),
   created_at timestamptz not null default now()
 );
 
@@ -93,6 +96,7 @@ create table public.teams (
   competition_id uuid not null references public.competitions (id) on delete cascade,
   name text not null check (char_length(name) between 1 and 60),
   color text not null default '#1d6a43' check (color ~ '^#[0-9a-fA-F]{6}$'),
+  logo_url text,
   created_at timestamptz not null default now(),
   unique (competition_id, name)
 );
@@ -194,3 +198,23 @@ create policy "staff write scores" on public.results for all to authenticated
 -- ---------- live updates ----------
 
 alter publication supabase_realtime add table public.competitions, public.teams, public.sports, public.results;
+
+-- ---------- images (logos, backgrounds) ----------
+-- Public image storage for logos and backgrounds. Anyone can view the images;
+-- only admins can upload, replace or delete them.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('branding', 'branding', true, 5242880, array['image/png', 'image/jpeg', 'image/webp'])
+on conflict (id) do update
+  set public = excluded.public, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "admins upload branding" on storage.objects;
+drop policy if exists "admins update branding" on storage.objects;
+drop policy if exists "admins delete branding" on storage.objects;
+
+create policy "admins upload branding" on storage.objects for insert to authenticated
+  with check (bucket_id = 'branding' and public.my_role() = 'admin');
+create policy "admins update branding" on storage.objects for update to authenticated
+  using (bucket_id = 'branding' and public.my_role() = 'admin')
+  with check (bucket_id = 'branding' and public.my_role() = 'admin');
+create policy "admins delete branding" on storage.objects for delete to authenticated
+  using (bucket_id = 'branding' and public.my_role() = 'admin');

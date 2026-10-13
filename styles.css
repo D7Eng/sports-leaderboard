@@ -164,3 +164,36 @@ img { max-width: 100%; }
 .who .linkish { font-size: 13px; }
 .people td { text-align: left; white-space: normal; }
 .people select { min-height: 36px; padding: 4px 8px; width: auto; }
+
+/* ---------- branding ---------- */
+:root.branded { --pitch: var(--brand); --pitch-soft: color-mix(in srgb, var(--brand) 14%, var(--surface)); }
+@media (prefers-color-scheme: dark) {
+  :root.branded { --pitch: color-mix(in srgb, var(--brand) 65%, #ffffff); --pitch-soft: color-mix(in srgb, var(--brand) 22%, var(--surface)); }
+}
+.brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.event-logo { width: clamp(52px, 12vw, 76px); height: clamp(52px, 12vw, 76px); object-fit: contain; flex: none; border-radius: 8px; background: var(--surface); padding: 4px; border: 1px solid var(--line); }
+.page-bg { position: fixed; inset: 0; z-index: -1; background-size: cover; background-position: center; }
+.page-bg::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 84%, transparent); }
+body.has-bg { background: var(--bg); }
+body.has-bg .wrap { position: relative; }
+body.has-bg .tabs { background: color-mix(in srgb, var(--bg) 88%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.tlogo { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; margin-right: 7px; vertical-align: -6px; background: var(--surface); }
+.brand-panel { display: grid; }
+.brand-row { display: flex; gap: 14px; align-items: center; padding: 12px 14px; border-top: 1px solid var(--line); }
+.brand-row:first-child { border-top: 0; }
+.brand-row .grow { display: grid; gap: 6px; min-width: 0; }
+.brand-panel > .msg { padding: 0 14px 12px; }
+.thumb { flex: none; display: grid; place-items: center; border-radius: 6px; border: 1px dashed var(--line); background: var(--bg); overflow: hidden; color: var(--muted); font-size: 12px; text-align: center; }
+.thumb img { width: 100%; height: 100%; object-fit: contain; }
+.logo-thumb { width: 72px; height: 72px; }
+.bg-thumb { width: 112px; height: 72px; }
+.bg-thumb img { object-fit: cover; }
+label.upload { cursor: pointer; display: inline-flex; align-items: center; text-transform: none; letter-spacing: 0; font-size: 14px; }
+label.btn.upload { color: var(--ink); font-weight: 600; }
+label.upload:focus-visible { outline: 2px solid var(--pitch); outline-offset: 1px; }
+.list li label.chip { flex: none; }
+.brand > div { min-width: 0; }
+h1 { overflow-wrap: anywhere; }
+header > div { min-width: 0; max-width: 100%; }
+.wrap > *, #view > div > *, .layout > * { min-width: 0; }
+label .note { text-transform: none; letter-spacing: 0; font-weight: 400; }

@@ -9,6 +9,7 @@ A live, multi-sport leaderboard for school intramurals, campus events and league
 - **Overall standings.** A medal table ranks colleges across all sports, with gold, silver and bronze for each sport's top three.
 - **Live updates.** Scores appear for everyone as soon as they're entered.
 - **Multiple competitions.** Run intramurals, leagues and tournaments side by side.
+- **Custom branding.** Upload an event or school logo, team logos and a page background, and pick a theme color.
 - **Mobile friendly.** Works in any modern browser on phones, tablets and desktops.
 
 ## Roles

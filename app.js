@@ -23,7 +23,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const num = n => Number.isInteger(n) ? String(n) : (Math.round(n * 10) / 10).toString();
 const ordinal = n => n + (["th", "st", "nd", "rd"][(n % 100 - 20) % 10] || ["th", "st", "nd", "rd"][n % 100] || "th");
-const dot = t => `<span class="swatch" style="background:${esc(t.color || "#888")}"></span>`;
+const dot = t => t.logo ? `<img class="tlogo" src="${esc(t.logo)}" alt="" loading="lazy">` : `<span class="swatch" style="background:${esc(t.color || "#888")}"></span>`;
 const teamOf = (c, id) => c.teams.find(t => t.id === id);
 const parseList = str => { const a = str.split(/[,\s]+/).filter(Boolean).map(Number); return a.length && a.every(n => Number.isFinite(n) && n >= 0) ? a : null; };
 const errText = e => !e ? "Something went wrong. Try again."
@@ -78,7 +78,8 @@ function comp() {
   const raw = comps.find(c => c.id === currentId); if (!raw) return null;
   const c = {
     id: raw.id, name: raw.name, kind: raw.kind, medalPts: (raw.medal_points || [5, 3, 1]).map(Number),
-    teams: teams.map(t => ({ id: t.id, name: t.name, color: t.color })),
+    logo: raw.logo_url || "", background: raw.background_url || "", accent: raw.accent_color || "",
+    teams: teams.map(t => ({ id: t.id, name: t.name, color: t.color, logo: t.logo_url || "" })),
     sports: sports.map(s => ({ id: s.id, name: s.name, format: s.format, draws: s.draws, win: +s.win_points, draw: +s.draw_points, loss: +s.loss_points, unit: s.unit, places: (s.place_points || []).map(Number), matches: [], events: [] })),
   };
   for (const r of results) {
@@ -204,7 +205,7 @@ function authScreen() {
 function buildShell() {
   $("root").innerHTML = `<div class="wrap">
     <header>
-      <div><p class="eyebrow" id="eyebrow">Scoreboard</p><h1 id="title">Sports Leaderboard</h1></div>
+      <div class="brand"><img id="eventLogo" class="event-logo" alt="" hidden><div><p class="eyebrow" id="eyebrow">Scoreboard</p><h1 id="title">Sports Leaderboard</h1></div></div>
       <div style="display:grid;gap:8px;justify-items:start">
         <div class="who" id="who"></div>
         <div class="switcher" id="switcher" hidden><label for="compSelect">Competition</label><select id="compSelect" style="width:auto;max-width:100%"></select></div>
@@ -224,6 +225,7 @@ function render() {
   if (!shellReady) buildShell();
   const keep = captureForm();
   const c = comp();
+  applyBranding(c);
   $("who").innerHTML = `<span class="badge ${role}">${ROLE_LABEL[role]}</span><span>${esc(me?.full_name || session.user.email)}</span><button class="linkish" type="button" data-signout>Log out</button>`;
   $("switcher").hidden = !(comps.length > 1 || canSetup());
   $("compSelect").innerHTML = comps.map(x => `<option value="${x.id}"${x.id === currentId ? " selected" : ""}>${esc(x.name)}</option>`).join("") + (canSetup() ? `<option value="__new">+ New competition…</option>` : "");
@@ -378,7 +380,10 @@ function placingView(c, s) {
 }
 
 function setupView(c) {
-  const teamsList = c.teams.length ? c.teams.map(t => `<li>${dot(t)}<span class="grow">${esc(t.name)}</span><button class="x" type="button" data-confirm data-del-team="${t.id}" aria-label="Remove ${esc(t.name)}">×</button></li>`).join("") : `<li class="empty">No teams yet.</li>`;
+  const teamsList = c.teams.length ? c.teams.map(t => `<li>${dot(t)}<span class="grow">${esc(t.name)}</span>
+    <label class="chip upload" tabindex="0" title="Upload a logo for ${esc(t.name)}">${t.logo ? "Change logo" : "Add logo"}<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" data-upload="team" data-team="${t.id}" hidden></label>
+    ${t.logo ? `<button class="x" type="button" data-confirm data-clear-img="team" data-team="${t.id}" aria-label="Remove logo for ${esc(t.name)}" title="Remove logo">⌫</button>` : ""}
+    <button class="x" type="button" data-confirm data-del-team="${t.id}" aria-label="Remove ${esc(t.name)}">×</button></li>`).join("") : `<li class="empty">No teams yet.</li>`;
   const sportsList = c.sports.length ? c.sports.map(s => `<li><div class="grow"><div><b>${esc(s.name)}</b></div><div class="sub">${s.format === "placing" ? `Placings · ${s.places.map(num).join("/")} pts` : `Head-to-head · ${esc(s.unit)} · W${num(s.win)}${s.draws ? ` D${num(s.draw)}` : ""} L${num(s.loss)}`}</div></div><button class="x" type="button" data-confirm data-del-sport="${s.id}" aria-label="Remove ${esc(s.name)}">×</button></li>`).join("") : `<li class="empty">No sports yet.</li>`;
   const presetChips = Object.keys(PRESETS).filter(n => !c.sports.some(s => s.name.toLowerCase() === n.toLowerCase())).map(n => `<button class="chip" type="button" data-preset="${esc(n)}">${esc(n)}</button>`).join("");
   return `<div class="setup-grid">
@@ -401,11 +406,23 @@ function setupView(c) {
         <button class="btn" type="submit">Add sport</button>${msgHTML("sportMsg")}
       </form>
     </section>
+    <section><h2>Branding</h2><p class="note">Logos show in the header and next to team names. The background fills the page behind the standings.</p>
+      <div class="panel brand-panel">
+        <div class="brand-row"><div class="thumb logo-thumb">${c.logo ? `<img src="${esc(c.logo)}" alt="Event logo">` : "<span>No logo</span>"}</div>
+          <div class="grow"><b>Event or school logo</b><div class="note">PNG, JPG, WebP or SVG. Square works best.</div>
+          <div class="inline"><label class="btn ghost upload" tabindex="0">${c.logo ? "Change" : "Upload"}<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" data-upload="logo" hidden></label>${c.logo ? `<button class="btn ghost danger" type="button" data-confirm data-clear-img="logo">Remove</button>` : ""}</div></div></div>
+        <div class="brand-row"><div class="thumb bg-thumb">${c.background ? `<img src="${esc(c.background)}" alt="Page background">` : "<span>No background</span>"}</div>
+          <div class="grow"><b>Page background</b><div class="note">A wide photo, like your gym, field or campus.</div>
+          <div class="inline"><label class="btn ghost upload" tabindex="0">${c.background ? "Change" : "Upload"}<input type="file" accept="image/png,image/jpeg,image/webp" data-upload="background" hidden></label>${c.background ? `<button class="btn ghost danger" type="button" data-confirm data-clear-img="background">Remove</button>` : ""}</div></div></div>
+        ${msgHTML("brandMsg")}
+      </div>
+    </section>
     <section><h2>Competition</h2>
       <form id="compForm" class="panel" novalidate>
         <label for="cName">Name<input id="cName" type="text" maxlength="80" value="${esc(c.name)}"></label>
         <label for="cKind">Type<select id="cKind">${["Intramurals", "League", "Tournament", "Campus event"].map(k => `<option${k === c.kind ? " selected" : ""}>${k}</option>`).join("")}</select></label>
         <label for="cMedal">Overall points for 1st, 2nd, 3rd…<input id="cMedal" type="text" value="${c.medalPts.map(num).join(", ")}" inputmode="decimal"></label>
+        <label for="cAccent">Theme color<span class="inline" style="align-items:center"><input id="cAccent" type="color" value="${esc(c.accent || "#1d6a43")}" style="width:56px;padding:2px"><span class="note">Used for tabs, buttons and highlights.</span></span></label>
         <button class="btn" type="submit">Save changes</button>${msgHTML("compMsg")}
       </form>
       <div class="inline"><button class="btn ghost danger" type="button" data-confirm data-del-comp="${c.id}">Delete this competition</button></div>
@@ -427,6 +444,73 @@ function peopleView() {
     ${msgHTML("peopleMsg")}
     <div class="panel"><div class="table-scroll"><table class="people"><thead><tr><th class="team">Person</th><th class="team opt">College</th><th class="team">Role</th></tr></thead><tbody>${rows}</tbody></table></div></div>
   </section>`;
+}
+
+/* ---------- branding ---------- */
+function applyBranding(c) {
+  const root = document.documentElement;
+  if (c && c.accent) { root.style.setProperty("--brand", c.accent); root.classList.add("branded"); }
+  else { root.style.removeProperty("--brand"); root.classList.remove("branded"); }
+  let bg = document.querySelector(".page-bg");
+  if (c && c.background) {
+    if (!bg) { bg = document.createElement("div"); bg.className = "page-bg"; document.body.prepend(bg); }
+    bg.style.backgroundImage = `url("${encodeURI(c.background)}")`;
+    document.body.classList.add("has-bg");
+  } else { bg?.remove(); document.body.classList.remove("has-bg"); }
+  const logo = $("eventLogo");
+  if (logo) { if (c && c.logo) { if (logo.getAttribute("src") !== c.logo) logo.src = c.logo; logo.alt = `${c.name} logo`; logo.hidden = false; } else logo.hidden = true; }
+  const icon = document.querySelector('link[rel="icon"]');
+  if (c && c.logo) { const l = icon || Object.assign(document.createElement("link"), { rel: "icon" }); l.href = c.logo; if (!icon) document.head.append(l); }
+}
+
+// Shrinks an image in the browser before upload: logos to 512px PNG (keeps transparency), backgrounds to 1920px JPEG.
+function prepareImage(file, kind) {
+  return new Promise((resolve, reject) => {
+    if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(file.type)) return reject(new Error("Choose a PNG, JPG, WebP or SVG image."));
+    if (file.size > 15 * 1024 * 1024) return reject(new Error("That image is over 15 MB. Choose a smaller one."));
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = kind === "background" ? 1920 : 512;
+      const w0 = img.naturalWidth || 512, h0 = img.naturalHeight || 512, scale = Math.min(1, max / Math.max(w0, h0));
+      const cv = document.createElement("canvas"); cv.width = Math.round(w0 * scale); cv.height = Math.round(h0 * scale);
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url);
+      const type = kind === "background" ? "image/jpeg" : "image/png";
+      cv.toBlob(b => b ? resolve({ blob: b, type, ext: type === "image/png" ? "png" : "jpg" }) : reject(new Error("Couldn't read that image.")), type, 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Couldn't read that image. Try a PNG or JPG.")); };
+    img.src = url;
+  });
+}
+const storagePath = url => { const i = (url || "").indexOf("/branding/"); return i < 0 ? null : decodeURIComponent(url.slice(i + 10).split("?")[0]); };
+
+async function uploadImage(kind, file, teamId) {
+  const c = comp(); if (!c) return;
+  const msgId = kind === "team" ? "teamMsg" : "brandMsg";
+  setMsg(msgId, "Uploading…", true);
+  try {
+    const { blob, type, ext } = await prepareImage(file, kind);
+    const path = `${c.id}/${kind === "team" ? "teams/" + teamId : kind}-${Date.now().toString(36)}.${ext}`;
+    const { error: upErr } = await sb.storage.from("branding").upload(path, blob, { contentType: type, cacheControl: "31536000", upsert: false });
+    if (upErr) throw upErr;
+    const url = sb.storage.from("branding").getPublicUrl(path).data.publicUrl;
+    const old = kind === "team" ? c.teams.find(t => t.id === teamId)?.logo : kind === "logo" ? c.logo : c.background;
+    const { error } = kind === "team"
+      ? await sb.from("teams").update({ logo_url: url }).eq("id", teamId)
+      : await sb.from("competitions").update({ [kind === "logo" ? "logo_url" : "background_url"]: url }).eq("id", c.id);
+    if (error) throw error;
+    if (storagePath(old)) sb.storage.from("branding").remove([storagePath(old)]);
+    setMsg(msgId, kind === "team" ? "Team logo saved." : kind === "logo" ? "Event logo saved." : "Background saved.", true);
+  } catch (e) { setMsg(msgId, e.statusCode === "403" || e.code === "42501" ? "Only admins can upload images." : e.message || "Upload failed. Try again."); }
+  await refresh();
+}
+async function clearImage(kind, teamId) {
+  const c = comp(); if (!c) return null;
+  const old = kind === "team" ? c.teams.find(t => t.id === teamId)?.logo : kind === "logo" ? c.logo : c.background;
+  const { error } = kind === "team"
+    ? await sb.from("teams").update({ logo_url: null }).eq("id", teamId)
+    : await sb.from("competitions").update({ [kind === "logo" ? "logo_url" : "background_url"]: null }).eq("id", c.id);
+  if (!error && storagePath(old)) sb.storage.from("branding").remove([storagePath(old)]);
+  return error;
 }
 
 /* ---------- actions ---------- */
@@ -482,12 +566,19 @@ document.addEventListener("click", async e => {
   } else if (cf.dataset.delSport && canSetup()) {
     ({ error } = await sb.from("sports").delete().eq("id", cf.dataset.delSport));
     if (!error) setMsg("sportMsg", "Sport removed.", true);
+  } else if (cf.dataset.clearImg && canSetup()) {
+    error = await clearImage(cf.dataset.clearImg, cf.dataset.team);
   } else if (cf.dataset.delComp && canSetup()) {
     ({ error } = await sb.from("competitions").delete().eq("id", cf.dataset.delComp));
     if (!error) { currentId = null; view = "overall"; rememberUi(); }
   }
   if (error) showBanner(errText(error));
   await refresh();
+});
+
+document.addEventListener("keydown", e => {
+  const l = e.target.closest?.("label.upload");
+  if (l && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); l.querySelector("input")?.click(); }
 });
 
 document.addEventListener("input", e => {
@@ -504,6 +595,7 @@ document.addEventListener("change", async e => {
     currentId = t.value; view = "overall"; rememberUi(); return refresh();
   }
   if (t.id === "spFormat" || t.id === "spDraws") return applySportFormat();
+  if (t.dataset.upload && canSetup() && t.files[0]) return uploadImage(t.dataset.upload, t.files[0], t.dataset.team);
   if (t.dataset.roleFor && canSetup()) {
     const p = people.find(x => x.id === t.dataset.roleFor);
     const { error } = await sb.from("profiles").update({ role: t.value }).eq("id", t.dataset.roleFor);
@@ -604,7 +696,7 @@ document.addEventListener("submit", async e => {
     const name = $("cName").value.trim(), medal = parseList($("cMedal").value);
     if (!name) return setMsg("compMsg", "Give the competition a name.");
     if (!medal) return setMsg("compMsg", "Overall points must be numbers, like 5, 3, 1.");
-    const { error } = await sb.from("competitions").update({ name, kind: $("cKind").value, medal_points: medal }).eq("id", c.id);
+    const { error } = await sb.from("competitions").update({ name, kind: $("cKind").value, medal_points: medal, accent_color: $("cAccent").value }).eq("id", c.id);
     if (error) return setMsg("compMsg", errText(error));
     setMsg("compMsg", "Saved.", true); await refresh();
   }
