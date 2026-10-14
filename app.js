@@ -41,22 +41,6 @@ let flashIds = [], lastRenderedView = null, shellReady = false;
 const sorts = {}, msgs = {};
 try { const s = JSON.parse(localStorage.getItem("sl-ui") || "{}"); currentId = s.c || null; view = s.v || "overall"; } catch (e) {}
 const rememberUi = () => { try { localStorage.setItem("sl-ui", JSON.stringify({ c: currentId, v: view })); } catch (e) {} };
-
-// A competition's login link is ?c=<id>. Students and coordinators who arrive through one
-// only see that competition; the link is remembered on this device.
-const isId = v => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v || "");
-let linkComp = new URLSearchParams(location.search).get("c");
-try { if (!isId(linkComp)) linkComp = localStorage.getItem("sl-link"); } catch (e) {}
-if (!isId(linkComp)) linkComp = null;
-const compLink = id => `${location.origin}${location.pathname}?c=${id}`;
-function setLink(id) {
-  linkComp = id || null;
-  try { linkComp ? localStorage.setItem("sl-link", linkComp) : localStorage.removeItem("sl-link"); } catch (e) {}
-  const url = new URL(location.href);
-  if (linkComp) url.searchParams.set("c", linkComp); else url.searchParams.delete("c");
-  history.replaceState(null, "", url);
-}
-if (linkComp) { setLink(linkComp); currentId = linkComp; }
 const canSetup = () => role === "admin";
 const canScore = () => role === "admin" || role === "coordinator";
 
@@ -72,8 +56,6 @@ async function loadAll() {
   const { data: cs, error } = await sb.from("competitions").select("*").order("created_at");
   if (error) return showBanner(errText(error));
   comps = cs || [];
-  if (linkComp && !comps.some(c => c.id === linkComp)) setLink(null);
-  if (linkComp && !canSetup()) comps = comps.filter(c => c.id === linkComp);
   if (!comps.some(c => c.id === currentId)) currentId = comps[0]?.id || null;
   if (currentId) {
     const [t, s, r] = await Promise.all([
@@ -115,7 +97,7 @@ function comp(excludeId) {
   const raw = comps.find(c => c.id === currentId); if (!raw) return null;
   const c = {
     id: raw.id, name: raw.name, kind: raw.kind, medalPts: (raw.medal_points || [5, 3, 1]).map(Number),
-    logo: raw.logo_url || "", background: raw.background_url || "", accent: raw.accent_color || "", live: raw.is_live !== false,
+    logo: raw.logo_url || "", background: raw.background_url || "", accent: raw.accent_color || "",
     teams: teams.map(t => ({ id: t.id, name: t.name, color: t.color, logo: t.logo_url || "" })),
     sports: sports.map(s => ({ id: s.id, name: s.name, format: s.format, draws: s.draws, win: +s.win_points, draw: +s.draw_points, loss: +s.loss_points, unit: s.unit, places: (s.place_points || []).map(Number), matches: [], events: [] })),
   };
@@ -189,7 +171,7 @@ function tableHTML(viewKey, cols, rows) {
   }).join("");
   const body = out.map(r => {
     const podium = r.podiumOk && r.pos <= 3 ? ` podium p${r.pos}` : "";
-    return `<tr class="${podium}${flashIds.includes(r.id) ? " flash" : ""}" style="--i:${Math.min(out.indexOf(r), 12)}">${cols.map(c => `<td class="${c.cls || ""}">${c.fmt ? c.fmt(r) : esc(num(r[c.key]))}</td>`).join("")}</tr>`;
+    return `<tr class="${podium}${flashIds.includes(r.id) ? " flash" : ""}">${cols.map(c => `<td class="${c.cls || ""}">${c.fmt ? c.fmt(r) : esc(num(r[c.key]))}</td>`).join("")}</tr>`;
   }).join("");
   return `<div class="table-scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
@@ -235,94 +217,53 @@ function authScreen() {
         ${signup ? `<p class="note">New accounts start as students, who can view standings. An admin can make you a coordinator.</p>` : `<button class="linkish" type="button" data-auth="forgot">Forgot password?</button>`}
       </form>`;
   $("root").innerHTML = `<div class="auth auth-split">
-    <section class="live-card" id="liveCard">${publicPanel()}</section>
+    <section class="live-card" id="liveCard" aria-live="polite">${publicPanel()}</section>
     <div class="auth-card">
-      <div class="auth-brand" id="authBrand">${authBrand()}</div>
+      <div><p class="eyebrow">Scoreboard</p><h1>Sports Leaderboard</h1></div>
       <div class="panel">${form}</div>
     </div>
   </div>`;
-  const live = $("liveCard");
-  live.addEventListener("mouseenter", () => live.classList.add("paused"));
-  live.addEventListener("mouseleave", () => live.classList.remove("paused"));
-  live.addEventListener("focusin", () => live.classList.add("paused"));
-  live.addEventListener("focusout", () => live.classList.remove("paused"));
   startPublicFeed();
 }
 
 /* ---------- public live ranking (login screen) ---------- */
-// Without a link: every live competition, rotating. With a link: only that competition, in its branding.
-let publicData = null, publicLoaded = false, publicTimer = null, publicIdx = 0, boardShown = null;
+let publicData = null, publicLoaded = false, publicTimer = null;
 async function loadPublic() {
-  let { data, error } = await sb.rpc("public_standings", linkComp ? { comp_id: linkComp } : {});
-  if (error && linkComp) ({ data, error } = await sb.rpc("public_standings")); // database without the links update
+  const { data, error } = await sb.rpc("public_standings");
   publicData = error ? null : data; publicLoaded = true;
 }
-function publicList() {
-  const d = publicData; if (!d) return [];
-  if (Array.isArray(d.competitions)) return d.competitions;
-  return d.competition ? [{ ...d.competition, updated_at: d.updated_at, results: d.results, standings: d.standings }] : [];
-}
-function shownPublic() {
-  const list = publicList(); if (!list.length) return null;
-  if (linkComp) return list.find(x => x.id === linkComp) || (list[0].id ? null : list[0]);
-  publicIdx = Math.min(publicIdx, list.length - 1);
-  return list[publicIdx];
-}
 function startPublicFeed() {
-  if (publicTimer) return paintPublic();
-  let first = true; // open on the competition this device last viewed
+  if (publicTimer) return;
   const tick = async () => {
     if (session && !recovering) return stopPublicFeed();
     await loadPublic();
-    if (first && !linkComp) { const i = publicList().findIndex(x => x.id === currentId); if (i >= 0) publicIdx = i; }
-    first = false; paintPublic();
+    const el = $("liveCard"); if (el) el.innerHTML = publicPanel();
+    applyBranding(publicData?.competition ? { ...publicData.competition, name: publicData.competition.name } : null);
   };
   tick(); publicTimer = setInterval(tick, 20000);
 }
 function stopPublicFeed() { clearInterval(publicTimer); publicTimer = null; }
-function paintPublic() {
-  const el = $("liveCard"); if (el) { el.innerHTML = publicPanel(); animateCounts(el.querySelector(".board.enter")); }
-  const br = $("authBrand"); if (br) br.innerHTML = authBrand();
-  const d = shownPublic();
-  applyBranding(d && (linkComp || publicList().length === 1) ? d : null);
-}
-function authBrand() {
-  const d = linkComp ? shownPublic() : null;
-  if (!d) return `<div><p class="eyebrow">Scoreboard</p><h1>Sports Leaderboard</h1></div>`;
-  return `${d.logo ? `<img class="auth-logo" src="${esc(d.logo)}" alt="${esc(d.name)} logo">` : ""}
-    <div><p class="eyebrow">${esc(d.kind || "Competition")} · Official leaderboard</p><h1>${esc(d.name)}</h1></div>`;
-}
-const crown = `<svg class="crown" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7l4.5 4L12 4l4.5 7L21 7l-2 11H5L3 7z" fill="currentColor"/></svg>`;
 function publicPanel() {
-  if (!publicLoaded) return `<div class="live-empty"><p class="eyebrow"><span class="live-dot" aria-hidden="true"></span>Live standings</p><div class="skeleton"></div><div class="skeleton short"></div></div>`;
-  const list = publicList(), d = shownPublic();
-  if (!d && linkComp) return `<div class="live-empty"><p class="eyebrow">Live standings</p><h2>Competition not found</h2><p class="note">This link may be for a competition that has ended or been removed.</p><div><button class="btn ghost" type="button" data-all-comps>See all competitions</button></div></div>`;
-  if (!d) return `<div class="live-empty"><p class="eyebrow">Live standings</p><h2>Coming soon</h2><p class="note">The leaderboard appears here once the event starts.</p></div>`;
-  const rotating = !linkComp && list.length > 1;
-  const pills = !rotating ? "" : `<div class="comp-pills" role="tablist" aria-label="Competitions">${list.map((x, i) => `<button type="button" role="tab" class="comp-pill" data-pub="${i}" aria-selected="${i === publicIdx}">${x.logo ? `<img src="${esc(x.logo)}" alt="">` : ""}<span>${esc(x.name)}</span></button>`).join("")}</div>
-    <div class="rotate-bar" aria-hidden="true"><span></span></div>`;
-  const enter = boardShown !== (d.id || d.name); boardShown = d.id || d.name;
+  if (!publicLoaded) return `<p class="note">Loading live standings…</p>`;
+  const d = publicData;
+  if (!d || !d.competition) return `<div class="live-empty"><p class="eyebrow">Live standings</p><h2>Coming soon</h2><p class="note">The leaderboard appears here once the event starts.</p></div>`;
   const rows = (d.standings || []).map(r => ({ ...r, points: Number(r.points) }));
-  const head = `<div class="live-head">${d.logo ? `<img class="live-logo" src="${esc(d.logo)}" alt="">` : ""}
-    <div><p class="eyebrow"><span class="live-dot" aria-hidden="true"></span>Live standings${rotating ? ` · ${publicIdx + 1} of ${list.length}` : ""}</p><h2>${esc(d.name)}</h2></div></div>`;
-  const foot = `<div class="live-foot"><p class="note">${d.results && rows.length ? `Updated ${timeAgo(d.updated_at)} · ` : ""}Log in to see every sport and match.</p>
-    ${!linkComp && d.id ? `<button class="btn ghost small" type="button" data-open-comp="${esc(d.id)}">Log in to this competition →</button>` : ""}</div>`;
-  let body;
-  if (!d.results || !rows.length) body = `<p class="note">No results yet. The first scores will show up here.</p>`;
-  else {
-    const [top, second] = rows;
-    const tied = second && second.points === top.points;
-    const lead = !second ? "" : tied ? "Tied for first" : `Leads by ${num(top.points - second.points)} pt${top.points - second.points === 1 ? "" : "s"}`;
-    const mark = (r, big) => r.logo ? `<img class="${big ? "leader-logo" : "tlogo"}" src="${esc(r.logo)}" alt="">` : `<span class="${big ? "leader-dot" : "swatch"}" style="background:${esc(r.color || "#888")}"></span>`;
-    const medals = r => `<span class="medal g" title="Gold">${r.gold}</span><span class="medal s" title="Silver">${r.silver}</span><span class="medal b" title="Bronze">${r.bronze}</span>`;
-    body = `<div class="leader">
-        ${mark(top, true)}
-        <div class="leader-text"><span class="leader-rank">${crown}No. 1</span><b>${esc(top.name)}</b><span class="note">${lead}</span></div>
-        <div class="leader-pts"><b data-count="${top.points}">${num(top.points)}</b><span>pts</span></div>
-      </div>
-      <ol class="mini-rank">${rows.slice(1, 5).map((r, i) => `<li style="--i:${i}"><span class="mr-pos">${r.rank}</span>${mark(r)}<span class="mr-name">${esc(r.name)}</span><span class="mr-medals">${medals(r)}</span><b class="mr-pts">${num(r.points)}</b></li>`).join("")}</ol>`;
-  }
-  return `${pills}<div class="board${enter ? " enter" : ""}" ${rotating ? "" : 'aria-live="polite"'}>${head}${body}</div>${foot}`;
+  const head = `<div class="live-head">${d.competition.logo ? `<img class="live-logo" src="${esc(d.competition.logo)}" alt="">` : ""}
+    <div><p class="eyebrow"><span class="live-dot" aria-hidden="true"></span>Live standings</p><h2>${esc(d.competition.name)}</h2></div></div>`;
+  if (!d.results || !rows.length) return head + `<p class="note">No results yet. The first scores will show up here.</p>`;
+  const [top, second] = rows;
+  const tied = second && second.points === top.points;
+  const lead = !second ? "" : tied ? "Tied for first" : `Leads by ${num(top.points - second.points)} pt${top.points - second.points === 1 ? "" : "s"}`;
+  const mark = (r, big) => r.logo ? `<img class="${big ? "leader-logo" : "tlogo"}" src="${esc(r.logo)}" alt="">` : `<span class="${big ? "leader-dot" : "swatch"}" style="background:${esc(r.color || "#888")}"></span>`;
+  const medals = r => `<span class="medal g" title="Gold">${r.gold}</span><span class="medal s" title="Silver">${r.silver}</span><span class="medal b" title="Bronze">${r.bronze}</span>`;
+  return head + `
+    <div class="leader">
+      ${mark(top, true)}
+      <div class="leader-text"><span class="leader-rank">No. 1</span><b>${esc(top.name)}</b><span class="note">${lead}</span></div>
+      <div class="leader-pts"><b>${num(top.points)}</b><span>pts</span></div>
+    </div>
+    <ol class="mini-rank">${rows.slice(1, 5).map(r => `<li><span class="mr-pos">${r.rank}</span>${mark(r)}<span class="mr-name">${esc(r.name)}</span><span class="mr-medals">${medals(r)}</span><b class="mr-pts">${num(r.points)}</b></li>`).join("")}</ol>
+    <p class="note">Updated ${timeAgo(d.updated_at)} · Log in to see every sport and match.</p>`;
 }
 function timeAgo(ts) {
   if (!ts) return "just now";
@@ -331,60 +272,6 @@ function timeAgo(ts) {
   if (s < 3600) return `${Math.floor(s / 60)} min ago`;
   if (s < 86400) return `${Math.floor(s / 3600)} hr ago`;
   const d = Math.floor(s / 86400); return d === 1 ? "yesterday" : `${d} days ago`;
-}
-
-/* ---------- motion ---------- */
-const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-// Counts numbers up from zero, for stats and points when a view opens.
-function animateCounts(root) {
-  if (!root || reducedMotion()) return;
-  root.querySelectorAll("[data-count]").forEach(el => {
-    const to = Number(el.dataset.count); if (!Number.isFinite(to) || to === 0) return;
-    const t0 = performance.now(), dur = 900;
-    const frame = now => {
-      const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
-      el.textContent = num(k === 1 ? to : Number.isInteger(to) ? Math.round(to * e) : Math.round(to * e * 10) / 10);
-      if (k < 1 && el.isConnected) requestAnimationFrame(frame);
-    };
-    el.textContent = "0"; requestAnimationFrame(frame);
-  });
-}
-let enterTimer = null;
-function animateView() {
-  const v = $("view"); if (!v) return;
-  v.classList.remove("enter"); void v.offsetWidth; v.classList.add("enter");
-  animateCounts(v);
-  clearTimeout(enterTimer); enterTimer = setTimeout(() => v.classList.remove("enter"), 1600);
-}
-
-// Logo intro played once after logging in, over the already-drawn homepage.
-let introPending = false;
-function introOverlay() {
-  const el = document.createElement("div"); el.className = "intro"; el.setAttribute("aria-hidden", "true");
-  document.body.append(el); return el;
-}
-function runIntro(el, c) {
-  const name = c?.name || "Sports Leaderboard";
-  const initials = name.split(/\s+/).filter(w => /^[A-Za-z0-9]/.test(w)).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "SL";
-  el.innerHTML = `<div class="intro-glow"></div>
-    <div class="intro-inner">
-      ${c?.logo ? `<img class="intro-logo" src="${esc(c.logo)}" alt="">` : `<span class="intro-mono">${esc(initials)}</span>`}
-      <p class="intro-kind">${esc(c?.kind || "Scoreboard")}</p>
-      <p class="intro-name">${esc(name)}</p>
-      <p class="intro-hello">Welcome${me?.full_name ? `, ${esc(me.full_name.split(" ")[0])}` : ""}</p>
-    </div>`;
-  const img = el.querySelector("img");
-  const ready = img && !img.complete ? new Promise(r => { img.onload = img.onerror = r; setTimeout(r, 1500); }) : Promise.resolve();
-  let closed = false;
-  const close = () => {
-    if (closed) return; closed = true;
-    document.removeEventListener("keydown", close);
-    el.classList.add("out"); animateView();
-    setTimeout(() => el.remove(), 700);
-  };
-  el.addEventListener("click", close);
-  document.addEventListener("keydown", close);
-  ready.then(() => { requestAnimationFrame(() => el.classList.add("play")); setTimeout(close, reducedMotion() ? 900 : 2700); });
 }
 
 function buildShell() {
@@ -434,7 +321,7 @@ function render() {
   const tabs = [["overall", "Overall"], ...c.sports.map(s => [s.id, s.name]), ...(canSetup() ? [["setup", "Setup"], ["people", "People"]] : [])];
   $("tabs").innerHTML = tabs.map(([id, label]) => `<button class="tab${id === "setup" ? " setup" : ""}" role="tab" type="button" data-tab="${id}" aria-selected="${view === id}">${esc(label)}</button>`).join("");
 
-  const v = $("view"), entering = lastRenderedView !== view + currentId;
+  const v = $("view");
   if (view === "overall") v.innerHTML = overallView(c);
   else if (view.startsWith("team:")) v.innerHTML = teamView(c, view.slice(5));
   else if (view === "setup") v.innerHTML = setupView(c);
@@ -442,7 +329,6 @@ function render() {
   else { const s = c.sports.find(x => x.id === view); v.innerHTML = s.format === "placing" ? placingView(c, s) : matchView(c, s); }
   if (lastRenderedView === view + currentId) restoreForm(keep);
   lastRenderedView = view + currentId;
-  if (entering) animateView();
   applySportFormat();
   if (flashIds.length) { flashIds = []; setTimeout(() => document.querySelectorAll("tr.flash").forEach(t => t.classList.remove("flash")), 1200); }
 }
@@ -486,17 +372,17 @@ function overallView(c) {
   ];
   const matches = c.sports.reduce((n, s) => n + s.matches.length, 0), events = c.sports.reduce((n, s) => n + s.events.length, 0);
   const done = c.sports.filter(hasResults).length;
-  const stats = [[c.teams.length, "", c.kind === "Intramurals" ? "Colleges" : "Teams"], [done, `<small>/${c.sports.length}</small>`, "Sports under way"], [matches, "", "Matches played"], [events, "", "Events finished"]]
-    .map(([v, extra, l], i) => `<div class="stat" style="--i:${i}"><b><span data-count="${v}">${v}</span>${extra}</b><span>${l}</span></div>`).join("");
+  const stats = [[c.teams.length, c.kind === "Intramurals" ? "Colleges" : "Teams"], [`${done}<small>/${c.sports.length}</small>`, "Sports under way"], [matches, "Matches played"], [events, "Events finished"]]
+    .map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
 
   // podium: 2nd, 1st, 3rd
   const top = rows.filter(r => r.pts > 0).slice(0, 3);
   const lead = top.length > 1 ? top[0].pts - top[1].pts : 0;
   const step = (r, place) => !r ? `<div class="step p${place} empty"></div>` : `
     <button class="step p${place}" type="button" data-tab="team:${r.id}">
-      <span class="step-mark${r.team.logo ? " has-logo" : ""}">${r.team.logo ? `<img src="${esc(r.team.logo)}" alt="">` : `<span class="step-dot" style="background:${esc(r.team.color)}"></span>`}</span>
+      <span class="step-mark">${r.team.logo ? `<img src="${esc(r.team.logo)}" alt="">` : `<span class="step-dot" style="background:${esc(r.team.color)}"></span>`}</span>
       <span class="step-name">${esc(r.name)}</span>
-      <span class="step-pts"><span data-count="${r.pts}">${num(r.pts)}</span> pts</span>
+      <span class="step-pts">${num(r.pts)} pts</span>
       <span class="step-block"><span>${place}</span></span>
     </button>`;
   const podium = top.length ? `<section class="podium-wrap panel">
@@ -564,10 +450,10 @@ function teamView(c, id) {
   return `<div class="home">
     <button class="linkish" type="button" data-tab="overall">← Back to overall</button>
     <section class="panel team-hero">
-      <span class="team-hero-mark${t.logo ? " has-logo" : ""}">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : `<span class="step-dot" style="background:${esc(t.color)}"></span>`}</span>
+      <span class="team-hero-mark">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : `<span class="step-dot" style="background:${esc(t.color)}"></span>`}</span>
       <div><p class="eyebrow">${me ? `${ordinal(me.pos)} overall` : ""}</p><h2 class="leader-name">${esc(t.name)}</h2>
         <p class="team-medals">${medalCell(me?.g || 0, "g")} gold ${medalCell(me?.sv || 0, "s")} silver ${medalCell(me?.b || 0, "b")} bronze</p></div>
-      <div class="leader-pts"><b data-count="${me?.pts || 0}">${num(me?.pts || 0)}</b><span>pts</span></div>
+      <div class="leader-pts"><b>${num(me?.pts || 0)}</b><span>pts</span></div>
     </section>
     <div class="home-grid">
       <section><div class="sec-head"><h2>By sport</h2><span class="note">This ${label}'s place in each sport</span></div>
@@ -681,10 +567,10 @@ function setupView(c) {
     </section>
     <section><h2>Branding</h2><p class="note">Logos show in the header and next to team names. The background fills the page behind the standings.</p>
       <div class="panel brand-panel">
-        <div class="brand-row"><div class="thumb logo-thumb${c.logo ? " filled" : ""}">${c.logo ? `<img src="${esc(c.logo)}" alt="Event logo">` : "<span>No logo</span>"}</div>
+        <div class="brand-row"><div class="thumb logo-thumb">${c.logo ? `<img src="${esc(c.logo)}" alt="Event logo">` : "<span>No logo</span>"}</div>
           <div class="grow"><b>Event or school logo</b><div class="note">PNG, JPG, WebP or SVG. Square works best.</div>
           <div class="inline"><label class="btn ghost upload" tabindex="0">${c.logo ? "Change" : "Upload"}<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" data-upload="logo" hidden></label>${c.logo ? `<button class="btn ghost danger" type="button" data-confirm data-clear-img="logo">Remove</button>` : ""}</div></div></div>
-        <div class="brand-row"><div class="thumb bg-thumb${c.background ? " filled" : ""}">${c.background ? `<img src="${esc(c.background)}" alt="Page background">` : "<span>No background</span>"}</div>
+        <div class="brand-row"><div class="thumb bg-thumb">${c.background ? `<img src="${esc(c.background)}" alt="Page background">` : "<span>No background</span>"}</div>
           <div class="grow"><b>Page background</b><div class="note">A wide photo, like your gym, field or campus.</div>
           <div class="inline"><label class="btn ghost upload" tabindex="0">${c.background ? "Change" : "Upload"}<input type="file" accept="image/png,image/jpeg,image/webp" data-upload="background" hidden></label>${c.background ? `<button class="btn ghost danger" type="button" data-confirm data-clear-img="background">Remove</button>` : ""}</div></div></div>
         ${msgHTML("brandMsg")}
@@ -696,13 +582,8 @@ function setupView(c) {
         <label for="cKind">Type<select id="cKind">${["Intramurals", "League", "Tournament", "Campus event"].map(k => `<option${k === c.kind ? " selected" : ""}>${k}</option>`).join("")}</select></label>
         <label for="cMedal">Overall points for 1st, 2nd, 3rd…<input id="cMedal" type="text" value="${c.medalPts.map(num).join(", ")}" inputmode="decimal"></label>
         <label for="cAccent">Theme color<span class="inline" style="align-items:center"><input id="cAccent" type="color" value="${esc(c.accent || "#1d6a43")}" style="width:56px;padding:2px"><span class="note">Used for tabs, buttons and highlights.</span></span></label>
-        <label class="check" for="cLive"><input id="cLive" type="checkbox"${c.live ? " checked" : ""}>Show live standings on the main login page</label>
         <button class="btn" type="submit">Save changes</button>${msgHTML("compMsg")}
       </form>
-      <div class="panel link-panel"><b>Login link</b>
-        <p class="note">Share this with the students and coordinators of ${esc(c.name)}. It opens a login page in this competition's colors, and after logging in they only see this competition.</p>
-        <div class="inline"><input type="text" readonly value="${esc(compLink(c.id))}" aria-label="Login link" data-no-restore onclick="this.select()"><button class="btn" type="button" data-copy-link="${c.id}">Copy</button></div>
-      </div>
       <div class="inline"><button class="btn ghost danger" type="button" data-confirm data-del-comp="${c.id}">Delete this competition</button></div>
     </section>
   </div>`;
@@ -801,7 +682,7 @@ function armed(btn) {
 async function newComp() {
   const { data, error } = await sb.from("competitions").insert({ name: "New competition", kind: "Intramurals" }).select().single();
   if (error) return showBanner(errText(error));
-  currentId = data.id; view = "setup"; rememberUi(); if (linkComp) setLink(currentId); await refresh();
+  currentId = data.id; view = "setup"; rememberUi(); await refresh();
   if ($("cName")) { $("cName").focus(); $("cName").select(); }
 }
 async function addSport(c, name, over) {
@@ -818,25 +699,10 @@ document.addEventListener("click", async e => {
   const t = e.target;
   const au = t.closest("[data-auth]");
   if (au) { authMode = au.dataset.auth; delete msgs.authMsg; return authScreen(); }
-  const pub = t.closest("[data-pub]");
-  if (pub) { publicIdx = +pub.dataset.pub; return paintPublic(); }
-  const oc = t.closest("[data-open-comp]");
-  if (oc) {
-    setLink(oc.dataset.openComp); currentId = linkComp; view = "overall"; rememberUi(); paintPublic();
-    document.querySelector(".auth-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    return;
-  }
-  if (t.closest("[data-all-comps]")) { setLink(null); await loadPublic(); return paintPublic(); }
-  if (t.closest("[data-copy-link]")) {
-    const link = compLink(t.closest("[data-copy-link]").dataset.copyLink);
-    try { await navigator.clipboard.writeText(link); toast("Login link copied. Share it with this competition's students and coordinators."); }
-    catch (err) { toast(link); }
-    return;
-  }
   if (t.closest("[data-signout]")) { await sb.auth.signOut(); return; }
   if (t.closest("[data-share]")) {
-    const link = currentId ? compLink(currentId) : location.origin + location.pathname;
-    try { await navigator.clipboard.writeText(link); toast("Link copied. Anyone who opens it can sign up and follow this competition."); }
+    const link = location.origin + location.pathname;
+    try { await navigator.clipboard.writeText(link); toast("Link copied. Share it so others can sign up and follow along."); }
     catch (err) { toast(link); }
     return;
   }
@@ -875,13 +741,6 @@ document.addEventListener("click", async e => {
   await refresh();
 });
 
-// The login screen moves to the next competition when its progress bar fills (paused on hover or focus).
-document.addEventListener("animationend", e => {
-  if (!e.target.matches?.(".rotate-bar span") || session) return;
-  const n = publicList().length; if (n < 2 || linkComp) return;
-  publicIdx = (publicIdx + 1) % n; paintPublic();
-});
-
 document.addEventListener("keydown", e => {
   const l = e.target.closest?.("label.upload");
   if (l && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); l.querySelector("input")?.click(); }
@@ -898,9 +757,7 @@ document.addEventListener("change", async e => {
   const t = e.target;
   if (t.id === "compSelect") {
     if (t.value === "__new") return newComp();
-    currentId = t.value; view = "overall"; rememberUi();
-    if (linkComp) setLink(currentId);
-    return refresh();
+    currentId = t.value; view = "overall"; rememberUi(); return refresh();
   }
   if (t.id === "spFormat" || t.id === "spDraws") return applySportFormat();
   if (t.dataset.upload && canSetup() && t.files[0]) return uploadImage(t.dataset.upload, t.files[0], t.dataset.team);
@@ -919,9 +776,7 @@ document.addEventListener("submit", async e => {
 
   /* sign in */
   if (f.id === "loginForm") {
-    introPending = true;
     const { error } = await sb.auth.signInWithPassword({ email: $("aEmail").value.trim(), password: $("aPass").value });
-    if (error) introPending = false;
     if (error) setMsg("authMsg", error.message === "Invalid login credentials" ? "That email and password don't match an account." : error.message);
     return;
   }
@@ -1006,7 +861,7 @@ document.addEventListener("submit", async e => {
     const name = $("cName").value.trim(), medal = parseList($("cMedal").value);
     if (!name) return setMsg("compMsg", "Give the competition a name.");
     if (!medal) return setMsg("compMsg", "Overall points must be numbers, like 5, 3, 1.");
-    const { error } = await sb.from("competitions").update({ name, kind: $("cKind").value, medal_points: medal, accent_color: $("cAccent").value, is_live: $("cLive").checked }).eq("id", c.id);
+    const { error } = await sb.from("competitions").update({ name, kind: $("cKind").value, medal_points: medal, accent_color: $("cAccent").value }).eq("id", c.id);
     if (error) return setMsg("compMsg", errText(error));
     setMsg("compMsg", "Saved.", true); await refresh();
   }
@@ -1016,12 +871,10 @@ document.addEventListener("submit", async e => {
 let channel = null;
 async function start() {
   if (!session) { if (channel) { sb.removeChannel(channel); channel = null; } shellReady = false; return authScreen(); }
-  const intro = introPending ? introOverlay() : null; introPending = false;
-  stopPublicFeed();
   await loadProfile();
   await loadAll();
   render();
-  if (intro) runIntro(intro, comp());
+  stopPublicFeed();
   if (!channel) channel = sb.channel("live").on("postgres_changes", { event: "*", schema: "public" }, scheduleReload)
     .subscribe(status => { const on = status === "SUBSCRIBED"; if (on !== liveOn) { liveOn = on; if (shellReady) render(); if (on) scheduleReload(); } });
 }
