@@ -70,11 +70,30 @@ async function loadAll() {
     people = data || [];
   }
 }
-let reloadTimer = null;
-function scheduleReload() { clearTimeout(reloadTimer); reloadTimer = setTimeout(async () => { await loadAll(); render(); }, 250); }
+let reloadTimer = null, pendingToasts = [], liveOn = false;
+function scheduleReload(payload) {
+  if (payload?.table === "results" && payload.eventType === "INSERT" && payload.new?.entered_by !== session?.user?.id) pendingToasts.push(payload.new);
+  clearTimeout(reloadTimer);
+  reloadTimer = setTimeout(async () => {
+    await loadAll(); render();
+    const c = comp();
+    for (const r of pendingToasts.splice(0)) {
+      if (!c || r.competition_id !== c.id) continue;
+      const s = c.sports.find(x => x.id === r.sport_id); if (!s) continue;
+      if (r.kind === "event") { const w = teamOf(c, (r.placings || [])[0]); toast(`${s.name}: ${w ? w.name + " wins " : ""}${r.event_name}`); }
+      else { const H = teamOf(c, r.home_team), A = teamOf(c, r.away_team); if (H && A) toast(`${s.name}: ${H.name} ${num(+r.home_score)}–${num(+r.away_score)} ${A.name}`); }
+    }
+  }, 250);
+}
+function toast(text) {
+  let box = document.querySelector(".toasts");
+  if (!box) { box = document.createElement("div"); box.className = "toasts"; box.setAttribute("role", "status"); document.body.append(box); }
+  const el = document.createElement("div"); el.className = "toast"; el.textContent = text; box.append(el);
+  setTimeout(() => { el.classList.add("out"); setTimeout(() => el.remove(), 400); }, 5000);
+}
 async function refresh() { await loadAll(); render(); }
 
-function comp() {
+function comp(excludeId) {
   const raw = comps.find(c => c.id === currentId); if (!raw) return null;
   const c = {
     id: raw.id, name: raw.name, kind: raw.kind, medalPts: (raw.medal_points || [5, 3, 1]).map(Number),
@@ -83,9 +102,10 @@ function comp() {
     sports: sports.map(s => ({ id: s.id, name: s.name, format: s.format, draws: s.draws, win: +s.win_points, draw: +s.draw_points, loss: +s.loss_points, unit: s.unit, places: (s.place_points || []).map(Number), matches: [], events: [] })),
   };
   for (const r of results) {
+    if (r.id === excludeId) continue;
     const s = c.sports.find(x => x.id === r.sport_id); if (!s) continue;
-    if (r.kind === "event") s.events.push({ id: r.id, name: r.event_name, order: r.placings || [], by: r.entered_by });
-    else s.matches.push({ id: r.id, h: r.home_team, a: r.away_team, hs: +r.home_score, as: +r.away_score, by: r.entered_by });
+    if (r.kind === "event") s.events.push({ id: r.id, name: r.event_name, order: r.placings || [], by: r.entered_by, at: r.created_at });
+    else s.matches.push({ id: r.id, h: r.home_team, a: r.away_team, hs: +r.home_score, as: +r.away_score, by: r.entered_by, at: r.created_at });
   }
   return c;
 }
@@ -155,7 +175,7 @@ function tableHTML(viewKey, cols, rows) {
   }).join("");
   return `<div class="table-scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
-const teamCell = r => `${dot(r.team)}${esc(r.name)}`;
+const teamCell = r => `<button class="team-link" type="button" data-tab="team:${r.id}">${dot(r.team)}${esc(r.name)}</button>`;
 const medalCell = (v, k) => `<span class="medal ${v ? k : "zero"}">${v}</span>`;
 const personName = id => { const p = people.find(x => x.id === id); return p ? (p.full_name || p.email || "a coordinator") : "a coordinator"; };
 
@@ -196,10 +216,62 @@ function authScreen() {
         <button class="btn" type="submit">${signup ? "Create account" : "Log in"}</button>${msgHTML("authMsg")}
         ${signup ? `<p class="note">New accounts start as students, who can view standings. An admin can make you a coordinator.</p>` : `<button class="linkish" type="button" data-auth="forgot">Forgot password?</button>`}
       </form>`;
-  $("root").innerHTML = `<div class="auth"><div class="auth-card">
-    <div><p class="eyebrow">Scoreboard</p><h1>Sports Leaderboard</h1></div>
-    <div class="panel">${form}</div>
-  </div></div>`;
+  $("root").innerHTML = `<div class="auth auth-split">
+    <section class="live-card" id="liveCard" aria-live="polite">${publicPanel()}</section>
+    <div class="auth-card">
+      <div><p class="eyebrow">Scoreboard</p><h1>Sports Leaderboard</h1></div>
+      <div class="panel">${form}</div>
+    </div>
+  </div>`;
+  startPublicFeed();
+}
+
+/* ---------- public live ranking (login screen) ---------- */
+let publicData = null, publicLoaded = false, publicTimer = null;
+async function loadPublic() {
+  const { data, error } = await sb.rpc("public_standings");
+  publicData = error ? null : data; publicLoaded = true;
+}
+function startPublicFeed() {
+  if (publicTimer) return;
+  const tick = async () => {
+    if (session && !recovering) return stopPublicFeed();
+    await loadPublic();
+    const el = $("liveCard"); if (el) el.innerHTML = publicPanel();
+    applyBranding(publicData?.competition ? { ...publicData.competition, name: publicData.competition.name } : null);
+  };
+  tick(); publicTimer = setInterval(tick, 20000);
+}
+function stopPublicFeed() { clearInterval(publicTimer); publicTimer = null; }
+function publicPanel() {
+  if (!publicLoaded) return `<p class="note">Loading live standings…</p>`;
+  const d = publicData;
+  if (!d || !d.competition) return `<div class="live-empty"><p class="eyebrow">Live standings</p><h2>Coming soon</h2><p class="note">The leaderboard appears here once the event starts.</p></div>`;
+  const rows = (d.standings || []).map(r => ({ ...r, points: Number(r.points) }));
+  const head = `<div class="live-head">${d.competition.logo ? `<img class="live-logo" src="${esc(d.competition.logo)}" alt="">` : ""}
+    <div><p class="eyebrow"><span class="live-dot" aria-hidden="true"></span>Live standings</p><h2>${esc(d.competition.name)}</h2></div></div>`;
+  if (!d.results || !rows.length) return head + `<p class="note">No results yet. The first scores will show up here.</p>`;
+  const [top, second] = rows;
+  const tied = second && second.points === top.points;
+  const lead = !second ? "" : tied ? "Tied for first" : `Leads by ${num(top.points - second.points)} pt${top.points - second.points === 1 ? "" : "s"}`;
+  const mark = (r, big) => r.logo ? `<img class="${big ? "leader-logo" : "tlogo"}" src="${esc(r.logo)}" alt="">` : `<span class="${big ? "leader-dot" : "swatch"}" style="background:${esc(r.color || "#888")}"></span>`;
+  const medals = r => `<span class="medal g" title="Gold">${r.gold}</span><span class="medal s" title="Silver">${r.silver}</span><span class="medal b" title="Bronze">${r.bronze}</span>`;
+  return head + `
+    <div class="leader">
+      ${mark(top, true)}
+      <div class="leader-text"><span class="leader-rank">No. 1</span><b>${esc(top.name)}</b><span class="note">${lead}</span></div>
+      <div class="leader-pts"><b>${num(top.points)}</b><span>pts</span></div>
+    </div>
+    <ol class="mini-rank">${rows.slice(1, 5).map(r => `<li><span class="mr-pos">${r.rank}</span>${mark(r)}<span class="mr-name">${esc(r.name)}</span><span class="mr-medals">${medals(r)}</span><b class="mr-pts">${num(r.points)}</b></li>`).join("")}</ol>
+    <p class="note">Updated ${timeAgo(d.updated_at)} · Log in to see every sport and match.</p>`;
+}
+function timeAgo(ts) {
+  if (!ts) return "just now";
+  const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} hr ago`;
+  const d = Math.floor(s / 86400); return d === 1 ? "yesterday" : `${d} days ago`;
 }
 
 function buildShell() {
@@ -226,7 +298,7 @@ function render() {
   const keep = captureForm();
   const c = comp();
   applyBranding(c);
-  $("who").innerHTML = `<span class="badge ${role}">${ROLE_LABEL[role]}</span><span>${esc(me?.full_name || session.user.email)}</span><button class="linkish" type="button" data-signout>Log out</button>`;
+  $("who").innerHTML = `<span class="live-pill${liveOn ? "" : " off"}" title="${liveOn ? "Scores update live" : "Reconnecting…"}"><span class="live-dot" aria-hidden="true"></span>${liveOn ? "Live" : "Offline"}</span><span class="badge ${role}">${ROLE_LABEL[role]}</span><span>${esc(me?.full_name || session.user.email)}</span><button class="linkish" type="button" data-share>Share</button><button class="linkish" type="button" data-signout>Log out</button>`;
   $("switcher").hidden = !(comps.length > 1 || canSetup());
   $("compSelect").innerHTML = comps.map(x => `<option value="${x.id}"${x.id === currentId ? " selected" : ""}>${esc(x.name)}</option>`).join("") + (canSetup() ? `<option value="__new">+ New competition…</option>` : "");
 
@@ -239,7 +311,8 @@ function render() {
     return;
   }
   if ((view === "setup" || view === "people") && !canSetup()) view = "overall";
-  if (!["overall", "setup", "people"].includes(view) && !c.sports.some(s => s.id === view)) view = "overall";
+  if (view.startsWith("team:") && !c.teams.some(t => "team:" + t.id === view)) view = "overall";
+  if (!["overall", "setup", "people"].includes(view) && !view.startsWith("team:") && !c.sports.some(s => s.id === view)) view = "overall";
 
   $("eyebrow").textContent = `${c.kind || "Competition"} · ${c.sports.length} sport${c.sports.length === 1 ? "" : "s"}`;
   $("title").textContent = c.name;
@@ -250,6 +323,7 @@ function render() {
 
   const v = $("view");
   if (view === "overall") v.innerHTML = overallView(c);
+  else if (view.startsWith("team:")) v.innerHTML = teamView(c, view.slice(5));
   else if (view === "setup") v.innerHTML = setupView(c);
   else if (view === "people") v.innerHTML = peopleView();
   else { const s = c.sports.find(x => x.id === view); v.innerHTML = s.format === "placing" ? placingView(c, s) : matchView(c, s); }
@@ -282,8 +356,13 @@ function applySportFormat() {
 function overallView(c) {
   if (!c.teams.length || !c.sports.length) return `<div class="panel"><p class="empty">${canSetup() ? `Add teams and sports in <button class="chip" data-tab="setup" type="button">Setup</button> to start the leaderboard.` : "The organizers are still adding teams and sports."}</p></div>`;
   const rows = overallTable(c); rows.forEach(r => r.podiumOk = r.pts > 0);
+  const feed = allResults(c);
+  // rank movement since the most recent result
+  const prev = feed.length > 1 ? new Map(overallTable(comp(feed[0].id)).map(r => [r.id, r.pos])) : null;
+  rows.forEach(r => r.move = prev ? (prev.get(r.id) || r.pos) - r.pos : 0);
   const cols = [
     { key: "pos", label: "#", cls: "pos" },
+    { key: "move", label: "", sortable: false, cls: "move", fmt: r => r.move > 0 ? `<span class="up" title="Up ${r.move} since the last result">▲${r.move}</span>` : r.move < 0 ? `<span class="down" title="Down ${-r.move} since the last result">▼${-r.move}</span>` : `<span class="same" title="No change">–</span>` },
     { key: "name", label: c.kind === "Intramurals" ? "College" : "Team", cls: "team", fmt: teamCell },
     { key: "g", label: "Gold", fmt: r => medalCell(r.g, "g") },
     { key: "sv", label: "Silver", fmt: r => medalCell(r.sv, "s") },
@@ -291,16 +370,96 @@ function overallView(c) {
     { key: "sports", label: "Sports", cls: "opt", title: "Sports with at least one result" },
     { key: "pts", label: "Pts", cls: "pts", title: "Overall points" },
   ];
+  const matches = c.sports.reduce((n, s) => n + s.matches.length, 0), events = c.sports.reduce((n, s) => n + s.events.length, 0);
+  const done = c.sports.filter(hasResults).length;
+  const stats = [[c.teams.length, c.kind === "Intramurals" ? "Colleges" : "Teams"], [`${done}<small>/${c.sports.length}</small>`, "Sports under way"], [matches, "Matches played"], [events, "Events finished"]]
+    .map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+
+  // podium: 2nd, 1st, 3rd
+  const top = rows.filter(r => r.pts > 0).slice(0, 3);
+  const lead = top.length > 1 ? top[0].pts - top[1].pts : 0;
+  const step = (r, place) => !r ? `<div class="step p${place} empty"></div>` : `
+    <button class="step p${place}" type="button" data-tab="team:${r.id}">
+      <span class="step-mark">${r.team.logo ? `<img src="${esc(r.team.logo)}" alt="">` : `<span class="step-dot" style="background:${esc(r.team.color)}"></span>`}</span>
+      <span class="step-name">${esc(r.name)}</span>
+      <span class="step-pts">${num(r.pts)} pts</span>
+      <span class="step-block"><span>${place}</span></span>
+    </button>`;
+  const podium = top.length ? `<section class="podium-wrap panel">
+      <div class="podium-head"><div><p class="eyebrow">Leading now</p><h2 class="leader-name">${esc(top[0].name)}</h2>
+        <p class="note">${top.length < 2 ? "First on the board." : lead === 0 ? "Tied for first place." : `Ahead by ${num(lead)} pt${lead === 1 ? "" : "s"}.`} ${top[0].g} gold, ${top[0].sv} silver, ${top[0].b} bronze.</p></div>
+        <p class="note">Updated ${timeAgo(feed[0]?.at)}</p></div>
+      <div class="podium-stage">${step(top[1], 2)}${step(top[0], 1)}${step(top[2], 3)}</div>
+    </section>` : `<section class="panel podium-wrap"><p class="eyebrow">Leading now</p><h2>No results yet</h2><p class="note">The podium fills in as soon as the first scores are in.</p></section>`;
+
+  const feedHTML = feed.length ? feed.slice(0, 8).map(r => `<li>${resultLine(c, r)}<span class="feed-meta">${esc(r.sport.name)} · ${timeAgo(r.at)}</span></li>`).join("") : `<li class="empty">Results will appear here as they come in.</li>`;
   const cards = c.sports.map(s => {
     const t = sportTable(c, s).filter(r => r.active);
     const n = s.format === "placing" ? s.events.length : s.matches.length;
-    const lead = t[0] ? `${dot(t[0].team)}${esc(t[0].name)}` : "No results yet";
-    return `<button class="card" type="button" data-tab="${s.id}"><span class="k">${esc(s.name)}</span><span class="v">${lead}</span><span class="sub">${n} ${s.format === "placing" ? (n === 1 ? "event" : "events") : (n === 1 ? "match" : "matches")} · ${s.format === "placing" ? "placings" : "head-to-head"}</span></button>`;
+    const leadT = t[0] ? `${dot(t[0].team)}${esc(t[0].name)}` : "No results yet";
+    return `<button class="card" type="button" data-tab="${s.id}"><span class="k">${esc(s.name)}</span><span class="v">${leadT}</span><span class="sub">${n} ${s.format === "placing" ? (n === 1 ? "event" : "events") : (n === 1 ? "match" : "matches")} · ${s.format === "placing" ? "placings" : "head-to-head"}</span></button>`;
   }).join("");
-  return `<div style="display:grid;gap:22px">
-    <section><div class="sec-head"><h2>Overall standings</h2><p class="note">Each sport's current top 3 earn gold, silver, bronze. Points ${c.medalPts.map((p, i) => `${ordinal(i + 1)} ${num(p)}`).join(", ")}.</p></div>
-    <div class="panel">${tableHTML("overall", cols, rows)}</div></section>
+  return `<div class="home">
+    ${podium}
+    <div class="stats">${stats}</div>
+    <div class="home-grid">
+      <section><div class="sec-head"><h2>Overall standings</h2><p class="note">Each sport's top 3 earn gold, silver, bronze. Points ${c.medalPts.map((p, i) => `${ordinal(i + 1)} ${num(p)}`).join(", ")}.</p></div>
+        <div class="panel">${tableHTML("overall", cols, rows)}<div class="foot"><span>▲▼ shows movement since the latest result. Tap a ${c.kind === "Intramurals" ? "college" : "team"} for its full record.</span></div></div></section>
+      <aside><div class="sec-head"><h2>Latest results</h2><span class="note">All sports</span></div><div class="panel"><ul class="list feed">${feedHTML}</ul></div></aside>
+    </div>
     <section><div class="sec-head"><h2>Sports</h2><p class="note">Pick a sport to see its table${canScore() ? " and enter results" : ""}.</p></div><div class="cards">${cards}</div></section>
+  </div>`;
+}
+
+// Every result in the competition, newest first.
+function allResults(c) {
+  const out = [];
+  for (const s of c.sports) {
+    for (const m of s.matches) out.push({ ...m, kind: "match", sport: s });
+    for (const e of s.events) out.push({ ...e, kind: "event", sport: s });
+  }
+  return out.sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
+}
+function resultLine(c, r) {
+  if (r.kind === "event") {
+    const w = teamOf(c, r.order[0]);
+    return `<span class="feed-main"><b>${esc(r.name)}</b>: ${w ? `${dot(w)}${esc(w.name)} wins` : "result recorded"}</span>`;
+  }
+  const H = teamOf(c, r.h), A = teamOf(c, r.a); if (!H || !A) return "";
+  const hw = r.hs > r.as, aw = r.as > r.hs;
+  return `<span class="feed-main"><span class="${hw ? "win" : ""}">${dot(H)}${esc(H.name)}</span> <span class="sc">${num(r.hs)}–${num(r.as)}</span> <span class="${aw ? "win" : ""}">${dot(A)}${esc(A.name)}</span></span>`;
+}
+
+function teamView(c, id) {
+  const t = teamOf(c, id); if (!t) return "";
+  const ov = overallTable(c), me = ov.find(r => r.id === id);
+  const label = c.kind === "Intramurals" ? "college" : "team";
+  const sportsRows = c.sports.map(s => {
+    const tb = sportTable(c, s).filter(r => r.active), r = tb.find(x => x.id === id);
+    const pos = r ? tb.indexOf(r) + 1 : null;
+    const record = !r ? "Not played yet" : s.format === "placing" ? `${r.e} event${r.e === 1 ? "" : "s"} · ${r.g} first place${r.g === 1 ? "" : "s"}` : `${r.w}W${s.draws ? ` ${r.d}D` : ""} ${r.l}L`;
+    return `<tr><td class="team"><button class="team-link" type="button" data-tab="${s.id}">${esc(s.name)}</button></td><td>${pos ? `<span class="${pos <= 3 ? `medal ${["g", "s", "b"][pos - 1]}` : ""}">${ordinal(pos)}</span>` : "–"}</td><td class="team">${record}</td><td class="pts">${r ? num(r.pts) : "–"}</td></tr>`;
+  }).join("");
+  const mine = allResults(c).filter(r => r.kind === "event" ? r.order.includes(id) : (r.h === id || r.a === id)).slice(0, 10);
+  const list = mine.length ? mine.map(r => {
+    if (r.kind === "event") { const p = r.order.indexOf(id) + 1; return `<li><span class="feed-main"><b>${ordinal(p)}</b> in ${esc(r.name)}</span><span class="feed-meta">${esc(r.sport.name)} · ${timeAgo(r.at)}</span></li>`; }
+    const home = r.h === id, mineS = home ? r.hs : r.as, theirs = home ? r.as : r.hs, opp = teamOf(c, home ? r.a : r.h);
+    const res = mineS > theirs ? "W" : mineS < theirs ? "L" : "D";
+    return `<li><span class="feed-main"><span class="form"><span class="${res}">${res}</span></span> ${num(mineS)}–${num(theirs)} vs ${opp ? `${dot(opp)}${esc(opp.name)}` : "?"}</span><span class="feed-meta">${esc(r.sport.name)} · ${timeAgo(r.at)}</span></li>`;
+  }).join("") : `<li class="empty">No results yet.</li>`;
+  return `<div class="home">
+    <button class="linkish" type="button" data-tab="overall">← Back to overall</button>
+    <section class="panel team-hero">
+      <span class="team-hero-mark">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : `<span class="step-dot" style="background:${esc(t.color)}"></span>`}</span>
+      <div><p class="eyebrow">${me ? `${ordinal(me.pos)} overall` : ""}</p><h2 class="leader-name">${esc(t.name)}</h2>
+        <p class="team-medals">${medalCell(me?.g || 0, "g")} gold ${medalCell(me?.sv || 0, "s")} silver ${medalCell(me?.b || 0, "b")} bronze</p></div>
+      <div class="leader-pts"><b>${num(me?.pts || 0)}</b><span>pts</span></div>
+    </section>
+    <div class="home-grid">
+      <section><div class="sec-head"><h2>By sport</h2><span class="note">This ${label}'s place in each sport</span></div>
+        <div class="panel"><div class="table-scroll"><table><thead><tr><th class="team">Sport</th><th>Place</th><th class="team">Record</th><th>Pts</th></tr></thead><tbody>${sportsRows}</tbody></table></div></div></section>
+      <aside><div class="sec-head"><h2>Recent results</h2></div><div class="panel"><ul class="list feed">${list}</ul></div></aside>
+    </div>
   </div>`;
 }
 
@@ -541,6 +700,12 @@ document.addEventListener("click", async e => {
   const au = t.closest("[data-auth]");
   if (au) { authMode = au.dataset.auth; delete msgs.authMsg; return authScreen(); }
   if (t.closest("[data-signout]")) { await sb.auth.signOut(); return; }
+  if (t.closest("[data-share]")) {
+    const link = location.origin + location.pathname;
+    try { await navigator.clipboard.writeText(link); toast("Link copied. Share it so others can sign up and follow along."); }
+    catch (err) { toast(link); }
+    return;
+  }
   const tab = t.closest("[data-tab]");
   if (tab) { view = tab.dataset.tab; Object.keys(msgs).forEach(k => delete msgs[k]); rememberUi(); render(); window.scrollTo({ top: 0 }); return; }
   const so = t.closest("[data-sort]");
@@ -709,7 +874,9 @@ async function start() {
   await loadProfile();
   await loadAll();
   render();
-  if (!channel) channel = sb.channel("live").on("postgres_changes", { event: "*", schema: "public" }, scheduleReload).subscribe();
+  stopPublicFeed();
+  if (!channel) channel = sb.channel("live").on("postgres_changes", { event: "*", schema: "public" }, scheduleReload)
+    .subscribe(status => { const on = status === "SUBSCRIBED"; if (on !== liveOn) { liveOn = on; if (shellReady) render(); if (on) scheduleReload(); } });
 }
 
 if (!sb) setupNeededScreen();
