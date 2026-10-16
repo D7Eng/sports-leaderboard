@@ -617,3 +617,46 @@ body.has-bg .auth { background: none; }
 .profile-hero { align-items: flex-start; padding-top: 112px; }
 .ph-avatar { margin-top: -74px; }
 .kpi.accent { background: linear-gradient(140deg, var(--brand, #1d6a43), color-mix(in srgb, var(--brand, #1d6a43) 55%, #000)); }
+
+/* ---------- theme palette: primary (--brand), secondary (--brand2), highlight (--brand3) ---------- */
+:root { --brand2: color-mix(in srgb, var(--brand, #1d6a43) 55%, #000); --brand3: var(--gold); --pitch2: var(--brand2); --pitch3: var(--brand3); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --pitch2: color-mix(in srgb, var(--brand2) 55%, #fff); } }
+:root[data-theme="dark"] { --pitch2: color-mix(in srgb, var(--brand2) 55%, #fff); }
+:root { --side-bg: color-mix(in srgb, var(--brand2) 80%, #03100a); }
+.sidebar { background: linear-gradient(170deg, color-mix(in srgb, var(--brand, #1d6a43) 78%, #03100a) 0%, color-mix(in srgb, var(--brand2) 80%, #03100a) 70%); }
+.nav-item[aria-current="page"]::before { background: var(--brand3); }
+.nav-item[aria-current="page"] .ico { color: var(--brand3); }
+.kpi.accent { background: linear-gradient(140deg, var(--brand, #1d6a43), var(--brand2)); }
+.kpi.accent .kpi-top .ico { color: var(--brand3); }
+.kpi:nth-child(2) .kpi-top .ico { color: var(--pitch2); background: color-mix(in srgb, var(--pitch2) 14%, var(--surface)); }
+.kpi:nth-child(3) .kpi-top .ico { color: color-mix(in srgb, var(--brand3) 75%, var(--ink)); background: color-mix(in srgb, var(--brand3) 18%, var(--surface)); }
+.meter span { background: linear-gradient(90deg, var(--pitch), var(--brand3)); }
+.live-card::before { background: linear-gradient(90deg, var(--pitch), var(--pitch2), var(--brand3)); }
+.profile-hero::before { background: linear-gradient(120deg, var(--brand, #1d6a43), var(--brand2) 60%, var(--brand3)); }
+.crown { color: var(--brand3); }
+.intro { background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--brand, #1d6a43) 75%, #0b120e), color-mix(in srgb, var(--brand2) 60%, #05080a) 70%); }
+.intro-glow { background: radial-gradient(circle, color-mix(in srgb, var(--brand3) 60%, transparent), transparent 65%); }
+.intro-kind { color: color-mix(in srgb, var(--brand3) 75%, #fff); }
+.auth { background:
+  radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--pitch) 18%, transparent), transparent 60%),
+  radial-gradient(900px 500px at 110% 110%, color-mix(in srgb, var(--brand3) 18%, transparent), transparent 60%); }
+.card-ico .ico { width: 24px; height: 24px; }
+.card:hover .card-ico { color: var(--pitch2); }
+.filter-chips .chip[aria-pressed="true"] { background: var(--pitch); }
+
+/* palette picker in Setup */
+.palette-field { display: grid; gap: 10px; }
+.field-label { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.preset { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 6px; justify-items: center; padding: 8px 6px; border: 1.5px solid var(--line); border-radius: 10px; text-align: center; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.preset:hover { border-color: color-mix(in srgb, var(--pitch) 50%, var(--line)); }
+.preset[aria-pressed="true"] { border-color: var(--pitch); box-shadow: 0 0 0 3px color-mix(in srgb, var(--pitch) 16%, transparent); }
+.preset:focus-visible { outline: 2px solid var(--pitch); outline-offset: 2px; }
+.preset small { font-size: 11px; line-height: 1.2; color: var(--muted); font-weight: 600; }
+.pz { display: flex; width: 100%; height: 26px; border-radius: 6px; overflow: hidden; }
+.pz i { flex: 2; } .pz i:nth-child(2) { flex: 1.4; } .pz i:nth-child(3) { flex: 1; }
+.pal-pickers input[type="color"] { padding: 3px; height: 40px; cursor: pointer; }
+.pal-preview { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: linear-gradient(120deg, var(--brand, #1d6a43), var(--brand2)); }
+.pp-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--brand3); }
+.pp-btn { background: var(--surface); color: var(--pitch); font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 6px; }
+.pp-chip { background: var(--brand3); color: #111; font-weight: 700; font-size: 12px; padding: 3px 10px; border-radius: 999px; }

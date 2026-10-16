@@ -115,7 +115,7 @@ function comp(excludeId) {
   const raw = comps.find(c => c.id === currentId); if (!raw) return null;
   const c = {
     id: raw.id, name: raw.name, kind: raw.kind, medalPts: (raw.medal_points || [5, 3, 1]).map(Number),
-    logo: raw.logo_url || "", background: raw.background_url || "", accent: raw.accent_color || "", live: raw.is_live !== false,
+    logo: raw.logo_url || "", background: raw.background_url || "", accent: raw.accent_color || "", accent2: raw.secondary_color || "", accent3: raw.highlight_color || "", live: raw.is_live !== false,
     teams: teams.map(t => ({ id: t.id, name: t.name, color: t.color, logo: t.logo_url || "" })),
     sports: sports.map(s => ({ id: s.id, name: s.name, format: s.format, draws: s.draws, win: +s.win_points, draw: +s.draw_points, loss: +s.loss_points, unit: s.unit, places: (s.place_points || []).map(Number), matches: [], events: [] })),
   };
@@ -413,6 +413,81 @@ const I = {
   close: ico('<path d="M6 6l12 12M18 6L6 18"/>'),
 };
 
+/* ---------- sport icons: matched by the sport's name, same line style ---------- */
+const SPORT_ICONS = [
+  [/basket/, '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18M5.7 5.6c2.5 2.6 2.5 10.2 0 12.8M18.3 5.6c-2.5 2.6-2.5 10.2 0 12.8"/>'],
+  [/volley/, '<circle cx="12" cy="12" r="9"/><path d="M12 12V3M12 12l7.8 4.5M12 12l-7.8 4.5"/><path d="M7.5 4.2c3.2 2 5 5.2 4.5 7.8M20.9 11c-3.1 2-6.6 2.4-8.9 1M7.6 19.8C7.5 16.1 9.3 13.2 12 12"/>'],
+  [/american|rugby/, '<path d="M4.6 19.4c-1.6-5.2 1-10.6 5.3-13.1s9-1.8 9.6-1.3c1.6 5.2-1 10.6-5.3 13.1s-9 1.8-9.6 1.3z"/><path d="M9.5 14.5l5-5M11 10.5l2.5 2.5M9.5 12l1 1M13 9l1 1"/>'],
+  [/football|soccer|futsal|fútbol/, '<circle cx="12" cy="12" r="9"/><path d="M12 8.2l3.2 2.3-1.2 3.8h-4l-1.2-3.8z"/><path d="M12 8.2V3.5M15.2 10.5l4.3-1.5M14 14.3l2.7 3.8M10 14.3l-2.7 3.8M8.8 10.5L4.5 9"/>'],
+  [/badminton|shuttle/, '<path d="M9 15h6l-.8 3.8a2.2 2.2 0 0 1-4.4 0z"/><path d="M9 15L5.5 4M15 15l3.5-11M12 15V3.5M7.2 9.5h9.6"/>'],
+  [/table ?tennis|ping ?pong/, '<path d="M14.6 14.6a6 6 0 1 0-5.2 1.7"/><path d="M9.4 16.3l1.3-1.3 3.9-.4M10.7 15l-4.9 4.9a1.4 1.4 0 0 0 2 2l4.9-4.9"/><circle cx="18.5" cy="18.5" r="2"/>'],
+  [/tennis|squash|pickle/, '<ellipse cx="9.5" cy="9.5" rx="6" ry="6"/><path d="M13.8 13.8l6.2 6.2M6.5 7.5h6M6.5 11.5h6M8 4.5v10M11.5 4.5v10"/><circle cx="19" cy="5" r="1.8"/>'],
+  [/chess/, '<path d="M8 21h9M9 21l.6-3h6.2l.6 3M10 18c.5-2.5 2-4 3-5.5-1.8.5-3.6.2-4.7-1.2l2.2-3.4c.3-2.6 2.6-4.9 5.5-4.9 1.7 2 2.6 5 1.9 8.5-.5 2.6-1 4.4-1 6.5"/><circle cx="14" cy="7" r=".6"/>'],
+  [/e-?sport|gaming|mobile legends|valorant|dota|league of|codm|game/, '<path d="M7 8h10a5 5 0 0 1 5 5v1a3 3 0 0 1-5.4 1.8L15 14H9l-1.6 1.8A3 3 0 0 1 2 14v-1a5 5 0 0 1 5-5z"/><path d="M7 10.5v3M5.5 12h3"/><circle cx="16" cy="11" r=".7"/><circle cx="18" cy="13" r=".7"/>'],
+  [/swim|aquatic|dive|diving/, '<circle cx="16.5" cy="6" r="2"/><path d="M3.5 12.5l5-3.5 3.2 2.5 2.3-1.8 3 2.3"/><path d="M2 16.5c1.7 0 1.7 1.3 3.3 1.3s1.7-1.3 3.4-1.3 1.6 1.3 3.3 1.3 1.7-1.3 3.3-1.3 1.7 1.3 3.4 1.3 1.6-1.3 3.3-1.3"/>'],
+  [/athlet|track|run|marathon|relay|sprint|cross ?country|fun run/, '<circle cx="14" cy="4.5" r="2"/><path d="M8 21l3-6 3 2v5M6 12l3-4 4 1 3 4 3 1"/>'],
+  [/cheer/, '<path d="M3 10v4h3l9 5V5l-9 5z"/><path d="M6 14l1.5 5H10L8.8 14.6M18 9a4 4 0 0 1 0 6M20 6.5a7.5 7.5 0 0 1 0 11"/>'],
+  [/dance|zumba/, '<circle cx="13" cy="4" r="2"/><path d="M13 7l-1.2 5.5 3.2 3 1 5.5M11.8 12.5l-3.3 2.8L7 21M8 8.5l5-1.5 4.5 3"/>'],
+  [/base ?ball|soft ?ball|cricket/, '<path d="M4.2 19.8l1.8-1.8M6 18L16.8 7.2a2.6 2.6 0 0 1 3.7 3.7L9.7 21.7z"/><circle cx="6" cy="6" r="3"/>'],
+  [/takraw|sepak/, '<circle cx="12" cy="12" r="9"/><path d="M4.6 7.5L12 12l7.4-4.5M12 12v9M7.5 4.2L12 12l4.5-7.8M4.4 16.6L12 12l7.6 4.6"/>'],
+  [/box/, '<path d="M7 12V8.5A5.5 5.5 0 0 1 12.5 3h1A5.5 5.5 0 0 1 19 8.5V13a5 5 0 0 1-5 5H8v3h8v-3"/><path d="M7 12a2.5 2.5 0 0 0 0 5h5M11 8h4"/>'],
+  [/taekwondo|karate|judo|arnis|wushu|martial|kung ?fu|jiu|wrestl|kickbox|muay/, '<circle cx="7" cy="4.5" r="2"/><path d="M7 7.5v6.5l-2.5 7M7 10.5l4.5-2.5M7 14l13-3.5M9.5 16.5L12 21"/>'],
+  [/cycl|bike|bmx/, '<circle cx="5.5" cy="16" r="4"/><circle cx="18.5" cy="16" r="4"/><path d="M5.5 16L9.5 9h5.5l3.5 7M9.5 9l3.5 7H5.5M14 5.5h2.5l-1.5 3.5"/>'],
+  [/golf/, '<path d="M9 19V3l8 3.5L9 10"/><ellipse cx="12" cy="20" rx="7" ry="1.6"/>'],
+  [/archery|dart|shoot/, '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/><path d="M12 12l8-8M17 4h3v3"/>'],
+  [/billiard|pool|snooker/, '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="10" r="4"/><path d="M11 8.6a1.2 1.2 0 1 0 2 0 1.2 1.2 0 1 0-2 0M10.8 11.2a1.4 1.4 0 1 0 2.4 0"/>'],
+  [/bowl/, '<path d="M10 3.5a2 2 0 0 1 4 0c0 1.5-.8 2.5-.8 4 0 2 2.8 4 2.8 8 0 2.8-1.4 5-4 5s-4-2.2-4-5c0-4 2.8-6 2.8-8 0-1.5-.8-2.5-.8-4z"/><path d="M10.6 6.8h2.8"/>'],
+  [/weight|lift|power|crossfit|gym/, '<path d="M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"/>'],
+  [/frisbee|ultimate|disc/, '<ellipse cx="12" cy="13" rx="9" ry="4"/><path d="M3 13v1c0 2.2 4 4 9 4s9-1.8 9-4v-1"/><path d="M8 12.5c1.2-.6 2.5-.9 4-.9"/>'],
+  [/hockey/, '<path d="M14 3l-6.5 15.5a2 2 0 0 1-1.8 1.5H3v-3h3.5L12.8 3"/><ellipse cx="17" cy="19" rx="3.5" ry="1.5"/>'],
+  [/handball|dodge/, '<circle cx="15" cy="9" r="5"/><path d="M5 21l2.5-6.5 3.5-1M5.5 12.5l3 1.5"/>'],
+  [/quiz|spell|debate|academic|math|science/, '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/>'],
+  [/sing|choir|band|music|vocal/, '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>'],
+];
+const TROPHY = '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>';
+const sportIcon = s => ico((SPORT_ICONS.find(([re]) => re.test(String(s.name || "").toLowerCase())) || [null, s.format === "placing" ? TROPHY : TROPHY])[1]);
+
+/* ---------- theme palettes: primary, secondary, highlight ---------- */
+const PALETTES = [
+  ["Emerald & Gold", "#1d6a43", "#0f3d2e", "#e0b44c"],
+  ["Navy & Orange", "#1d3f8a", "#0b1f4d", "#f28c28"],
+  ["Maroon & Gold", "#7a1f2b", "#3d0f17", "#f2c14e"],
+  ["Royal & Silver", "#2453c9", "#142e73", "#aab8cc"],
+  ["Purple & Gold", "#5b2a86", "#2e1446", "#f6c445"],
+  ["Crimson & Charcoal", "#b3202a", "#2b2d33", "#f4a261"],
+  ["Teal & Coral", "#0f7c7a", "#0a4a52", "#ff7f61"],
+  ["Forest & Lime", "#2f6b2f", "#173d1f", "#b5e04b"],
+  ["Sky & Sun", "#1e88c8", "#0d3b66", "#ffd166"],
+  ["Sunset", "#e4572e", "#8c1c3a", "#ffc914"],
+];
+const paletteOf = c => [c.accent || "#1d6a43", c.accent2 || "", c.accent3 || ""];
+function paletteHTML(c) {
+  const [p1, p2, p3] = paletteOf(c);
+  const cur = [p1, p2, p3].join(",").toLowerCase();
+  return `<div class="palette-field"><span class="field-label">Theme palette</span>
+    <div class="presets">${PALETTES.map(([name, a, b, h]) => `<button type="button" class="preset" data-palette="${a},${b},${h}" aria-pressed="${cur === [a, b, h].join(",").toLowerCase()}" title="${name}"><span class="pz"><i style="background:${a}"></i><i style="background:${b}"></i><i style="background:${h}"></i></span><small>${name}</small></button>`).join("")}</div>
+    <div class="row3 pal-pickers">
+      <label for="cAccent">Primary<input id="cAccent" type="color" value="${esc(p1)}"></label>
+      <label for="cAccent2">Secondary<input id="cAccent2" type="color" value="${esc(p2 || mixHex(p1, "#000000", .45))}"></label>
+      <label for="cAccent3">Highlight<input id="cAccent3" type="color" value="${esc(p3 || "#e0b44c")}"></label>
+    </div>
+    <div class="pal-preview" aria-hidden="true"><span class="pp-bar"></span><span class="pp-btn">Button</span><span class="pp-chip">Highlight</span></div>
+    <p class="note">Primary colors buttons and menus, secondary blends into the sidebar and banners, and highlight marks what's active. Pick a preset or your own; the page previews it until you save.</p>
+  </div>`;
+}
+function mixHex(a, b, t) {
+  const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const x = p(a), y = p(b);
+  return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("");
+}
+function previewPalette() {
+  if (!$("cAccent")) return;
+  const c = comp();
+  applyBranding({ ...c, accent: $("cAccent").value, accent2: $("cAccent2").value, accent3: $("cAccent3").value });
+  const cur = [$("cAccent").value, $("cAccent2").value, $("cAccent3").value].join(",").toLowerCase();
+  document.querySelectorAll(".preset").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.palette.toLowerCase() === cur)));
+}
+
 /* ---------- people ---------- */
 const MEMBER = { student: "Student", athlete: "Athlete", faculty: "Faculty", guest: "Guest" };
 const MEMBER_INFO = [
@@ -469,7 +544,7 @@ function navHTML(c) {
   if (c) {
     const played = c.sports.reduce((n, s) => n + s.matches.length + s.events.length, 0);
     groups.push(`<p class="nav-label">Overview</p>${item("overall", I.dash, "Dashboard")}${item("teams", I.teams, c.kind === "Intramurals" ? "Colleges" : "Teams", `<span class="nav-count">${c.teams.length}</span>`)}${item("results", I.results, "Results", `<span class="nav-count">${played}</span>`)}`);
-    if (c.sports.length) groups.push(`<p class="nav-label">Sports</p>${c.sports.map(s => item(s.id, s.format === "placing" ? I.flag : I.ball, s.name)).join("")}`);
+    if (c.sports.length) groups.push(`<p class="nav-label">Sports</p>${c.sports.map(s => item(s.id, sportIcon(s), s.name)).join("")}`);
   } else groups.push(`<p class="nav-label">Overview</p>${item("overall", I.dash, "Dashboard")}`);
   groups.push(`<p class="nav-label">Account</p>${item("profile", I.user, "My profile")}${canSetup() ? (c ? item("setup", I.gear, "Setup") : "") + item("people", I.shield, "People") : ""}`);
   return groups.map(g => `<div class="nav-group">${g}</div>`).join("");
@@ -512,7 +587,7 @@ function notifHTML(c) {
 function searchHits(c, q) {
   q = q.trim().toLowerCase(); if (!c || !q) return [];
   const hits = [
-    ...c.sports.filter(s => s.name.toLowerCase().includes(q)).map(s => ({ tab: s.id, icon: s.format === "placing" ? I.flag : I.ball, label: s.name, sub: "Sport" })),
+    ...c.sports.filter(s => s.name.toLowerCase().includes(q)).map(s => ({ tab: s.id, icon: sportIcon(s), label: s.name, sub: "Sport" })),
     ...c.teams.filter(t => t.name.toLowerCase().includes(q)).map(t => ({ tab: "team:" + t.id, icon: dot(t), label: t.name, sub: c.kind === "Intramurals" ? "College" : "Team" })),
   ];
   return hits.slice(0, 8);
@@ -568,6 +643,7 @@ function render() {
   lastRenderedView = view + currentId;
   if (entering) animateView();
   applySportFormat();
+  if (view === "setup") previewPalette();
   if (flashIds.length) { flashIds = []; setTimeout(() => document.querySelectorAll("tr.flash").forEach(t => t.classList.remove("flash")), 1200); }
 }
 
@@ -621,7 +697,7 @@ function overallView(c) {
   const kpis = `<div class="kpis">
     <div class="kpi" style="--i:0"><div class="kpi-top"><span>Results posted</span>${I.results}</div><b class="kpi-num" data-count="${feed.length}">${feed.length}</b>
       ${sparkline(perDay, days)}<p class="kpi-foot">${matches} match${matches === 1 ? "" : "es"} · ${events} event${events === 1 ? "" : "s"} · <b>${week}</b> this week</p></div>
-    <div class="kpi" style="--i:1"><div class="kpi-top"><span>Sports under way</span>${I.ball}</div><b class="kpi-num"><span data-count="${done}">${done}</span><small>/${c.sports.length}</small></b>
+    <div class="kpi" style="--i:1"><div class="kpi-top"><span>Sports under way</span>${ico(TROPHY)}</div><b class="kpi-num"><span data-count="${done}">${done}</span><small>/${c.sports.length}</small></b>
       <div class="meter" role="img" aria-label="${done} of ${c.sports.length} sports have results"><span style="width:${c.sports.length ? Math.round(done / c.sports.length * 100) : 0}%"></span></div>
       <p class="kpi-foot">${c.sports.length - done ? `${c.sports.length - done} still to start` : "Every sport has results"}</p></div>
     <div class="kpi" style="--i:2"><div class="kpi-top"><span>Medals awarded</span>${I.medal}</div><b class="kpi-num" data-count="${medals}">${medals}</b>
@@ -662,7 +738,7 @@ function overallView(c) {
     const t = sportTable(c, s).filter(r => r.active);
     const n = s.format === "placing" ? s.events.length : s.matches.length;
     const leadT = t[0] ? `${dot(t[0].team)}${esc(t[0].name)}` : "No results yet";
-    return `<button class="card" type="button" data-tab="${s.id}"><span class="card-ico">${s.format === "placing" ? I.flag : I.ball}</span><span class="k">${esc(s.name)}</span><span class="v">${leadT}</span><span class="sub">${n} ${s.format === "placing" ? (n === 1 ? "event" : "events") : (n === 1 ? "match" : "matches")} · ${s.format === "placing" ? "placings" : "head-to-head"}</span></button>`;
+    return `<button class="card" type="button" data-tab="${s.id}"><span class="card-ico">${sportIcon(s)}</span><span class="k">${esc(s.name)}</span><span class="v">${leadT}</span><span class="sub">${n} ${s.format === "placing" ? (n === 1 ? "event" : "events") : (n === 1 ? "match" : "matches")} · ${s.format === "placing" ? "placings" : "head-to-head"}</span></button>`;
   }).join("");
   return `<div class="home">
     ${kpis}
@@ -920,7 +996,7 @@ function setupView(c) {
         <label for="cName">Name<input id="cName" type="text" maxlength="80" value="${esc(c.name)}"></label>
         <label for="cKind">Type<select id="cKind">${["Intramurals", "League", "Tournament", "Campus event"].map(k => `<option${k === c.kind ? " selected" : ""}>${k}</option>`).join("")}</select></label>
         <label for="cMedal">Overall points for 1st, 2nd, 3rd…<input id="cMedal" type="text" value="${c.medalPts.map(num).join(", ")}" inputmode="decimal"></label>
-        <label for="cAccent">Theme color<span class="inline" style="align-items:center"><input id="cAccent" type="color" value="${esc(c.accent || "#1d6a43")}" style="width:56px;padding:2px"><span class="note">Used for tabs, buttons and highlights.</span></span></label>
+        ${paletteHTML(c)}
         <label class="check" for="cLive"><input id="cLive" type="checkbox"${c.live ? " checked" : ""}>Show live standings on the main login page</label>
         <button class="btn" type="submit">Save changes</button>${msgHTML("compMsg")}
       </form>
@@ -954,6 +1030,7 @@ function applyBranding(c) {
   const root = document.documentElement;
   if (c && c.accent) { root.style.setProperty("--brand", c.accent); root.classList.add("branded"); }
   else { root.style.removeProperty("--brand"); root.classList.remove("branded"); }
+  for (const [k, v] of [["--brand2", c?.accent2], ["--brand3", c?.accent3]]) v ? root.style.setProperty(k, v) : root.style.removeProperty(k);
   let bg = document.querySelector(".page-bg");
   if (c && c.background) {
     if (!bg) { bg = document.createElement("div"); bg.className = "page-bg"; document.body.prepend(bg); }
@@ -1079,6 +1156,8 @@ document.addEventListener("click", async e => {
     if (open) { panel.innerHTML = notifHTML(c); const latest = allResults(c)[0]?.at; if (latest) markSeen(latest); paintBell(c); }
     return;
   }
+  const pal = t.closest("[data-palette]");
+  if (pal) { const [a, b, h] = pal.dataset.palette.split(","); $("cAccent").value = a; $("cAccent2").value = b; $("cAccent3").value = h; return previewPalette(); }
   const rf = t.closest("[data-rfilter]");
   if (rf) { resultsFilter = rf.dataset.rfilter; return render(); }
   const au = t.closest("[data-auth]");
@@ -1171,6 +1250,7 @@ document.addEventListener("keydown", e => {
 
 document.addEventListener("input", e => {
   if (e.target.id === "globalSearch") return paintSearch();
+  if (/^cAccent[23]?$/.test(e.target.id)) return previewPalette();
   if (e.target.id === "peopleSearch") {
     msgs.peopleFilter = { text: e.target.value };
     const pos = e.target.selectionStart; render(); const el = $("peopleSearch"); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
@@ -1306,7 +1386,7 @@ document.addEventListener("submit", async e => {
     const name = $("cName").value.trim(), medal = parseList($("cMedal").value);
     if (!name) return setMsg("compMsg", "Give the competition a name.");
     if (!medal) return setMsg("compMsg", "Overall points must be numbers, like 5, 3, 1.");
-    const { error } = await sb.from("competitions").update({ name, kind: $("cKind").value, medal_points: medal, accent_color: $("cAccent").value, is_live: $("cLive").checked }).eq("id", c.id);
+    const { error } = await sb.from("competitions").update({ name, kind: $("cKind").value, medal_points: medal, accent_color: $("cAccent").value, secondary_color: $("cAccent2").value, highlight_color: $("cAccent3").value, is_live: $("cLive").checked }).eq("id", c.id);
     if (error) return setMsg("compMsg", errText(error));
     setMsg("compMsg", "Saved.", true); await refresh();
   }

@@ -93,6 +93,8 @@ create table public.competitions (
   logo_url text,
   background_url text,
   accent_color text check (accent_color is null or accent_color ~ '^#[0-9a-fA-F]{6}$'),
+  secondary_color text check (secondary_color is null or secondary_color ~ '^#[0-9a-fA-F]{6}$'),
+  highlight_color text check (highlight_color is null or highlight_color ~ '^#[0-9a-fA-F]{6}$'),
   is_live boolean not null default true,  -- shown on the login screen
   created_at timestamptz not null default now()
 );
@@ -305,7 +307,7 @@ as $$
     select ov.*, row_number() over (order by points desc, gold desc, silver desc, bronze desc, name) as rank from ov
   )
   select jsonb_build_object(
-    'id', c.id, 'name', c.name, 'kind', c.kind, 'logo', c.logo_url, 'accent', c.accent_color, 'background', c.background_url,
+    'id', c.id, 'name', c.name, 'kind', c.kind, 'logo', c.logo_url, 'accent', c.accent_color, 'accent2', c.secondary_color, 'accent3', c.highlight_color, 'background', c.background_url,
     'updated_at', (select max(r.created_at) from results r where r.competition_id = cid),
     'results', (select count(*) from results r where r.competition_id = cid),
     'standings', coalesce((select jsonb_agg(jsonb_build_object('rank', rank, 'name', name, 'logo', logo_url, 'color', color,

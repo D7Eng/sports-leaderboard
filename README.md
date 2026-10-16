@@ -15,7 +15,8 @@ A live, multi-sport leaderboard for school intramurals, campus events and league
 - **Competition login links.** Each competition has its own link and branded login page, so participants go straight to their event.
 - **Animated intro.** The event logo plays a short intro after logging in.
 - **Multiple competitions.** Run intramurals, leagues and tournaments side by side.
-- **Custom branding.** Upload an event or school logo, team logos and a page background, and pick a theme color.
+- **Custom branding.** Upload an event or school logo, team logos and a page background, and choose a three-color theme palette from presets or your own colors.
+- **Sport icons.** Each sport gets a matching icon, from basketball and volleyball to chess, esports and swimming.
 - **Mobile friendly.** Works in any modern browser on phones, tablets and desktops.
 
 ## Roles
