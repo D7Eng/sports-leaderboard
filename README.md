@@ -8,7 +8,8 @@ A live, multi-sport leaderboard for school intramurals, campus events and league
 - **Flexible scoring.** Each sport sets its own points for a win, draw or loss, or its own points for each finishing place.
 - **Overall standings.** A medal table ranks colleges across all sports, with gold, silver and bronze for each sport's top three.
 - **Live updates.** Scores appear for everyone as soon as they're entered, with a pop-up for each new result.
-- **Homepage at a glance.** A podium for the top three, quick stats, rank movement arrows and a feed of the latest results.
+- **Dashboard.** A sidebar menu, search, result notifications, key stats with a weekly activity chart, a points race, a podium for the top three and rank movement arrows.
+- **Member profiles.** Everyone can add a photo, edit their details and say whether they're a student, athlete, faculty member or guest.
 - **Team pages.** Each college's medals, standing in every sport and recent results.
 - **Live leader on the login screen.** Visitors see who's number 1 in every running competition; everything else stays behind sign-in.
 - **Competition login links.** Each competition has its own link and branded login page, so participants go straight to their event.
@@ -21,11 +22,11 @@ A live, multi-sport leaderboard for school intramurals, campus events and league
 
 | Role | Access |
 | --- | --- |
-| Student | View standings and results |
+| Viewer | View standings and results |
 | Sports coordinator | Enter match scores and event winners |
 | Administrator | Manage competitions, teams, sports and user roles |
 
-New users sign up as students. Administrators assign coordinator and admin roles.
+New users sign up as viewers. Administrators assign coordinator and admin roles.
 
 ## Built with
 

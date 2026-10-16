@@ -16,7 +16,7 @@ const PRESETS = {
   Swimming:      { format: "placing", places: [10, 8, 6, 5, 4, 3] },
   "Dance Sport": { format: "placing", places: [10, 8, 6, 5, 4, 3] },
 };
-const ROLE_LABEL = { admin: "Admin", coordinator: "Coordinator", student: "Student" };
+const ROLE_LABEL = { admin: "Admin", coordinator: "Coordinator", student: "Viewer" };
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
@@ -84,7 +84,7 @@ async function loadAll() {
     teams = t.data || []; sports = s.data || []; results = r.data || [];
   } else { teams = []; sports = []; results = []; }
   if (canScore()) {
-    const { data } = await sb.from("profiles").select("id, full_name, email, college, role, created_at").order("created_at");
+    const { data } = await sb.from("profiles").select("*").order("created_at");
     people = data || [];
   }
 }
@@ -228,11 +228,12 @@ function authScreen() {
       <form id="${signup ? "signupForm" : "loginForm"}" novalidate>
         ${signup ? `
         <label for="aName">Full name<input id="aName" type="text" autocomplete="name" maxlength="80"></label>
-        <label for="aCollege">College or department<input id="aCollege" type="text" maxlength="80" placeholder="e.g. College of Engineering"></label>` : ""}
+        <label for="aCollege">College or department<input id="aCollege" type="text" maxlength="80" placeholder="e.g. College of Engineering"></label>
+        <label for="aType">I am a<select id="aType">${MEMBER_INFO.map(([k, label]) => `<option value="${k}">${label}</option>`).join("")}</select></label>` : ""}
         <label for="aEmail">Email<input id="aEmail" type="email" autocomplete="email"></label>
         <label for="aPass">Password<input id="aPass" type="password" autocomplete="${signup ? "new-password" : "current-password"}" minlength="8"></label>
         <button class="btn" type="submit">${signup ? "Create account" : "Log in"}</button>${msgHTML("authMsg")}
-        ${signup ? `<p class="note">New accounts start as students, who can view standings. An admin can make you a coordinator.</p>` : `<button class="linkish" type="button" data-auth="forgot">Forgot password?</button>`}
+        ${signup ? `<p class="note">New accounts can view every standing. An admin can make you a coordinator so you can enter scores.</p>` : `<button class="linkish" type="button" data-auth="forgot">Forgot password?</button>`}
       </form>`;
   $("root").innerHTML = `<div class="auth auth-split">
     <section class="live-card" id="liveCard">${publicPanel()}</section>
@@ -387,23 +388,143 @@ function runIntro(el, c) {
   ready.then(() => { requestAnimationFrame(() => el.classList.add("play")); setTimeout(close, reducedMotion() ? 900 : 2700); });
 }
 
+/* ---------- icons ---------- */
+const ico = d => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I = {
+  dash: ico('<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>'),
+  teams: ico('<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14.2c2.8.4 5 2.8 5 5.8"/>'),
+  results: ico('<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>'),
+  user: ico('<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>'),
+  gear: ico('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/>'),
+  shield: ico('<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/>'),
+  menu: ico('<path d="M4 6h16M4 12h16M4 18h16"/>'),
+  search: ico('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>'),
+  bell: ico('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>'),
+  share: ico('<circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/>'),
+  logout: ico('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>'),
+  ball: ico('<circle cx="12" cy="12" r="9"/><path d="M12 3a15 15 0 0 1 0 18M3 12h18"/>'),
+  flag: ico('<path d="M5 21V4h11l-1.5 4L16 12H5"/>'),
+  camera: ico('<path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/>'),
+  book: ico('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M9 7h6"/>'),
+  run: ico('<circle cx="14" cy="4.5" r="2"/><path d="M8 21l3-6 3 2v5M6 12l3-4 4 1 3 4 3 1"/>'),
+  grad: ico('<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5"/>'),
+  star: ico('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>'),
+  medal: ico('<circle cx="12" cy="15" r="6"/><path d="M8.5 10L6 3h4l2 4 2-4h4l-2.5 7"/>'),
+  close: ico('<path d="M6 6l12 12M18 6L6 18"/>'),
+};
+
+/* ---------- people ---------- */
+const MEMBER = { student: "Student", athlete: "Athlete", faculty: "Faculty", guest: "Guest" };
+const MEMBER_INFO = [
+  ["student", "Student", "Studying here and cheering for my college", I.book],
+  ["athlete", "Athlete", "Competing for a team in the games", I.run],
+  ["faculty", "Faculty", "Teaching, coaching or on staff", I.grad],
+  ["guest", "Guest", "Alumni, family or a visitor", I.star],
+];
+const initialsOf = s => String(s || "").split(/[\s@._-]+/).filter(w => /^[A-Za-z0-9]/.test(w)).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?";
+const hueOf = s => [...String(s || "x")].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 7);
+function avatar(p, size = "") {
+  if (p?.avatar_url) return `<img class="avatar ${size}" src="${esc(p.avatar_url)}" alt="">`;
+  return `<span class="avatar ${size}" style="--h:${hueOf(p?.id || p?.email)}" aria-hidden="true">${esc(initialsOf(p?.full_name || p?.email))}</span>`;
+}
+const myName = () => me?.full_name || session?.user?.email || "";
+
+/* ---------- shell: sidebar + top bar ---------- */
 function buildShell() {
-  $("root").innerHTML = `<div class="wrap">
-    <header>
-      <div class="brand"><img id="eventLogo" class="event-logo" alt="" hidden><div><p class="eyebrow" id="eyebrow">Scoreboard</p><h1 id="title">Sports Leaderboard</h1></div></div>
-      <div style="display:grid;gap:8px;justify-items:start">
-        <div class="who" id="who"></div>
-        <div class="switcher" id="switcher" hidden><label for="compSelect">Competition</label><select id="compSelect" style="width:auto;max-width:100%"></select></div>
-        <div class="meta" id="meta"></div>
-      </div>
-    </header>
-    <div class="banner" id="banner" hidden></div>
-    <nav class="tabs" id="tabs" role="tablist" aria-label="Views"></nav>
-    <main id="view"></main>
+  $("root").innerHTML = `<div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Main menu">
+      <div class="side-brand"><img id="eventLogo" class="event-logo" alt="" hidden><span class="brand-mono" id="brandMono" aria-hidden="true"></span>
+        <div class="side-brand-text"><p class="side-kind" id="eyebrow">Scoreboard</p><b id="title">Sports Leaderboard</b></div>
+        <button class="icon-btn side-close" type="button" data-close-nav aria-label="Close menu">${I.close}</button></div>
+      <div class="switcher" id="switcher" hidden><label for="compSelect">Competition</label><select id="compSelect"></select></div>
+      <nav class="side-nav" id="sideNav"></nav>
+      <div class="side-foot" id="sideFoot"></div>
+    </aside>
+    <div class="scrim" data-close-nav></div>
+    <div class="main">
+      <header class="topbar">
+        <button class="icon-btn" type="button" data-toggle-nav aria-label="Menu">${I.menu}</button>
+        <div class="page-title"><p class="crumb" id="crumb"></p><h1 id="pageTitle"></h1></div>
+        <div class="top-actions">
+          <div class="search" id="searchBox">${I.search}<input id="globalSearch" type="search" placeholder="Search teams and sports" aria-label="Search teams and sports" autocomplete="off"><kbd>/</kbd><div class="search-results" id="searchResults" hidden></div></div>
+          <button class="icon-btn only-phone" type="button" data-open-search aria-label="Search">${I.search}</button>
+          <span id="livePill" class="hide-phone"></span>
+          <button class="icon-btn hide-phone" type="button" data-share aria-label="Copy link to this competition" title="Copy link">${I.share}</button>
+          <div class="bell-wrap"><button class="icon-btn" type="button" data-bell aria-label="Latest results" aria-expanded="false">${I.bell}<span class="bell-count" id="bellCount" hidden></span></button><div class="notif-panel" id="notifPanel" hidden></div></div>
+          <button class="avatar-btn" type="button" data-tab="profile" id="avatarBtn" aria-label="My profile"></button>
+        </div>
+      </header>
+      <div class="banner" id="banner" hidden></div>
+      <main id="view"></main>
+    </div>
   </div>`;
   shellReady = true; lastRenderedView = null;
 }
 function showBanner(text) { const b = $("banner"); if (b) { b.hidden = false; b.textContent = text; } }
+
+function navHTML(c) {
+  const active = id => view === id || (id === "teams" && view.startsWith("team:"));
+  const item = (id, icon, label, extra = "") => `<button class="nav-item" type="button" data-tab="${id}"${active(id) ? ' aria-current="page"' : ""} title="${esc(label)}">${icon}<span class="nav-text">${esc(label)}</span>${extra}</button>`;
+  const groups = [];
+  if (c) {
+    const played = c.sports.reduce((n, s) => n + s.matches.length + s.events.length, 0);
+    groups.push(`<p class="nav-label">Overview</p>${item("overall", I.dash, "Dashboard")}${item("teams", I.teams, c.kind === "Intramurals" ? "Colleges" : "Teams", `<span class="nav-count">${c.teams.length}</span>`)}${item("results", I.results, "Results", `<span class="nav-count">${played}</span>`)}`);
+    if (c.sports.length) groups.push(`<p class="nav-label">Sports</p>${c.sports.map(s => item(s.id, s.format === "placing" ? I.flag : I.ball, s.name)).join("")}`);
+  } else groups.push(`<p class="nav-label">Overview</p>${item("overall", I.dash, "Dashboard")}`);
+  groups.push(`<p class="nav-label">Account</p>${item("profile", I.user, "My profile")}${canSetup() ? (c ? item("setup", I.gear, "Setup") : "") + item("people", I.shield, "People") : ""}`);
+  return groups.map(g => `<div class="nav-group">${g}</div>`).join("");
+}
+
+function pageHeading(c) {
+  const kindTeams = c?.kind === "Intramurals" ? "Colleges" : "Teams";
+  if (view === "profile") return ["Account", "My profile"];
+  if (view === "people") return ["Admin", "People"];
+  if (!c) return ["", "Dashboard"];
+  if (view === "setup") return ["Admin", "Setup"];
+  if (view === "teams") return [c.name, kindTeams];
+  if (view === "results") return [c.name, "Results"];
+  if (view.startsWith("team:")) return [kindTeams, teamOf(c, view.slice(5))?.name || ""];
+  const s = c.sports.find(x => x.id === view);
+  if (s) return [s.format === "placing" ? "Placings" : "Head-to-head", s.name];
+  return [c.name, "Dashboard"];
+}
+
+/* ---------- notifications (results since you last looked) ---------- */
+const seenKey = () => `sl-seen-${currentId}`;
+function lastSeen(c) {
+  let v = ""; try { v = localStorage.getItem(seenKey()) || ""; } catch (e) {}
+  if (!v) { v = allResults(c)[0]?.at || new Date().toISOString(); markSeen(v); }
+  return v;
+}
+function markSeen(at) { try { localStorage.setItem(seenKey(), at); } catch (e) {} }
+function unseen(c) { const s = lastSeen(c); return allResults(c).filter(r => String(r.at) > s && r.by !== session?.user?.id); }
+function paintBell(c) {
+  const n = c ? unseen(c).length : 0, b = $("bellCount");
+  b.hidden = !n; b.textContent = n > 9 ? "9+" : n;
+}
+function notifHTML(c) {
+  const s = lastSeen(c), list = allResults(c).slice(0, 8);
+  return `<div class="np-head"><b>Latest results</b><button class="linkish" type="button" data-tab="results">See all</button></div>
+    <ul class="list feed">${list.length ? list.map(r => `<li class="${String(r.at) > s ? "is-new" : ""}">${resultLine(c, r)}<span class="feed-meta">${esc(r.sport.name)} · ${timeAgo(r.at)}</span></li>`).join("") : `<li class="empty">No results yet.</li>`}</ul>`;
+}
+
+/* ---------- search ---------- */
+function searchHits(c, q) {
+  q = q.trim().toLowerCase(); if (!c || !q) return [];
+  const hits = [
+    ...c.sports.filter(s => s.name.toLowerCase().includes(q)).map(s => ({ tab: s.id, icon: s.format === "placing" ? I.flag : I.ball, label: s.name, sub: "Sport" })),
+    ...c.teams.filter(t => t.name.toLowerCase().includes(q)).map(t => ({ tab: "team:" + t.id, icon: dot(t), label: t.name, sub: c.kind === "Intramurals" ? "College" : "Team" })),
+  ];
+  return hits.slice(0, 8);
+}
+function paintSearch() {
+  const box = $("searchResults"), q = $("globalSearch").value, hits = searchHits(comp(), q);
+  if (!q.trim()) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = hits.length ? hits.map((h, i) => `<button type="button" class="sr-item${i === 0 ? " first" : ""}" data-tab="${h.tab}" data-search-pick>${h.icon}<span>${esc(h.label)}</span><small>${h.sub}</small></button>`).join("")
+    : `<p class="empty">Nothing matches "${esc(q.trim())}".</p>`;
+}
+function closeSearch() { const i = $("globalSearch"); if (i) i.value = ""; const r = $("searchResults"); if (r) r.hidden = true; document.body.classList.remove("searching"); }
 
 function render() {
   if (!session) return authScreen();
@@ -411,34 +532,37 @@ function render() {
   const keep = captureForm();
   const c = comp();
   applyBranding(c);
-  $("who").innerHTML = `<span class="live-pill${liveOn ? "" : " off"}" title="${liveOn ? "Scores update live" : "Reconnecting…"}"><span class="live-dot" aria-hidden="true"></span>${liveOn ? "Live" : "Offline"}</span><span class="badge ${role}">${ROLE_LABEL[role]}</span><span>${esc(me?.full_name || session.user.email)}</span><button class="linkish" type="button" data-share>Share</button><button class="linkish" type="button" data-signout>Log out</button>`;
+
+  if ((view === "setup" || view === "people") && !canSetup()) view = "overall";
+  if (c) {
+    if (view.startsWith("team:") && !c.teams.some(t => "team:" + t.id === view)) view = "overall";
+    if (!["overall", "teams", "results", "profile", "setup", "people"].includes(view) && !view.startsWith("team:") && !c.sports.some(s => s.id === view)) view = "overall";
+  } else if (!["overall", "profile", "people"].includes(view)) view = "overall";
+
+  $("title").textContent = c ? c.name : "Sports Leaderboard";
+  $("eyebrow").textContent = c ? `${c.kind || "Competition"} · ${c.sports.length} sport${c.sports.length === 1 ? "" : "s"}` : "Scoreboard";
+  $("brandMono").textContent = initialsOf(c?.name || "Sports Leaderboard"); $("brandMono").hidden = !!c?.logo;
   $("switcher").hidden = !(comps.length > 1 || canSetup());
   $("compSelect").innerHTML = comps.map(x => `<option value="${x.id}"${x.id === currentId ? " selected" : ""}>${esc(x.name)}</option>`).join("") + (canSetup() ? `<option value="__new">+ New competition…</option>` : "");
-
-  if (!c) {
-    $("eyebrow").textContent = "Scoreboard"; $("title").textContent = "Sports Leaderboard"; $("meta").innerHTML = "";
-    $("tabs").innerHTML = canSetup() ? `<button class="tab" role="tab" type="button" data-tab="overall" aria-selected="${view !== "people"}">Start</button><button class="tab setup" role="tab" type="button" data-tab="people" aria-selected="${view === "people"}">People</button>` : "";
-    $("view").innerHTML = view === "people" && canSetup() ? peopleView()
-      : canSetup() ? `<div class="panel" style="display:grid;gap:12px;padding:16px;justify-items:start"><h2>Start your first competition</h2><p class="note">Create an intramurals event, league or tournament. Then add colleges or teams and the sports they play.</p><button class="btn" type="button" data-new-comp>Create competition</button></div>`
-      : `<div class="panel"><p class="empty">No competitions yet. Check back when the organizers have set one up.</p></div>`;
-    return;
-  }
-  if ((view === "setup" || view === "people") && !canSetup()) view = "overall";
-  if (view.startsWith("team:") && !c.teams.some(t => "team:" + t.id === view)) view = "overall";
-  if (!["overall", "setup", "people"].includes(view) && !view.startsWith("team:") && !c.sports.some(s => s.id === view)) view = "overall";
-
-  $("eyebrow").textContent = `${c.kind || "Competition"} · ${c.sports.length} sport${c.sports.length === 1 ? "" : "s"}`;
-  $("title").textContent = c.name;
-  const played = c.sports.reduce((n, s) => n + s.matches.length + s.events.length, 0);
-  $("meta").innerHTML = `<span><b>${c.teams.length}</b> teams</span><span><b>${played}</b> results</span>`;
-  const tabs = [["overall", "Overall"], ...c.sports.map(s => [s.id, s.name]), ...(canSetup() ? [["setup", "Setup"], ["people", "People"]] : [])];
-  $("tabs").innerHTML = tabs.map(([id, label]) => `<button class="tab${id === "setup" ? " setup" : ""}" role="tab" type="button" data-tab="${id}" aria-selected="${view === id}">${esc(label)}</button>`).join("");
+  $("sideNav").innerHTML = navHTML(c);
+  $("sideFoot").innerHTML = `${avatar(me)}<div class="sf-text"><b>${esc(myName())}</b><span>${MEMBER[me?.member_type] || "Member"} · ${ROLE_LABEL[role]}</span></div><button class="icon-btn" type="button" data-signout aria-label="Log out" title="Log out">${I.logout}</button>`;
+  $("livePill").innerHTML = `<span class="live-pill${liveOn ? "" : " off"}" title="${liveOn ? "Scores update live" : "Reconnecting…"}"><span class="live-dot" aria-hidden="true"></span>${liveOn ? "Live" : "Offline"}</span>`;
+  $("avatarBtn").innerHTML = `${avatar(me)}<span class="ab-text"><b>${esc((me?.full_name || "").split(" ")[0] || "Profile")}</b><small>${ROLE_LABEL[role]}</small></span>`;
+  paintBell(c);
+  const [crumb, title] = pageHeading(c);
+  $("crumb").textContent = crumb; $("pageTitle").textContent = title;
+  document.title = `${title}${c ? " · " + c.name : ""}`;
 
   const v = $("view"), entering = lastRenderedView !== view + currentId;
-  if (view === "overall") v.innerHTML = overallView(c);
+  if (view === "profile") v.innerHTML = profileView();
+  else if (view === "people") v.innerHTML = peopleView();
+  else if (!c) v.innerHTML = canSetup() ? `<div class="panel empty-hero"><h2>Start your first competition</h2><p class="note">Create an intramurals event, league or tournament. Then add colleges or teams and the sports they play.</p><button class="btn" type="button" data-new-comp>Create competition</button></div>`
+    : `<div class="panel empty-hero"><h2>No competitions yet</h2><p class="note">Check back when the organizers have set one up. Meanwhile, you can fill in <button class="linkish" type="button" data-tab="profile">your profile</button>.</p></div>`;
+  else if (view === "overall") v.innerHTML = overallView(c);
+  else if (view === "teams") v.innerHTML = teamsView(c);
+  else if (view === "results") v.innerHTML = resultsView(c);
   else if (view.startsWith("team:")) v.innerHTML = teamView(c, view.slice(5));
   else if (view === "setup") v.innerHTML = setupView(c);
-  else if (view === "people") v.innerHTML = peopleView();
   else { const s = c.sports.find(x => x.id === view); v.innerHTML = s.format === "placing" ? placingView(c, s) : matchView(c, s); }
   if (lastRenderedView === view + currentId) restoreForm(keep);
   lastRenderedView = view + currentId;
@@ -449,13 +573,13 @@ function render() {
 
 function captureForm() {
   const o = {};
-  document.querySelectorAll("#view input, #view select").forEach(el => { if (el.id) o[el.id] = el.type === "checkbox" ? el.checked : el.value; });
+  document.querySelectorAll("#view input, #view select").forEach(el => { if (el.id) o[el.id] = el.type === "checkbox" || el.type === "radio" ? el.checked : el.value; });
   return { o, focus: document.activeElement && document.activeElement.id };
 }
 function restoreForm(k) {
   for (const [id, val] of Object.entries(k.o)) {
     const el = $(id); if (!el || el.dataset.noRestore !== undefined) continue;
-    if (el.type === "checkbox") el.checked = val;
+    if (el.type === "checkbox" || el.type === "radio") el.checked = val;
     else if (el.tagName === "SELECT") { if ([...el.options].some(o => o.value === val)) el.value = val; }
     else el.value = val;
   }
@@ -468,16 +592,17 @@ function applySportFormat() {
 }
 
 function overallView(c) {
-  if (!c.teams.length || !c.sports.length) return `<div class="panel"><p class="empty">${canSetup() ? `Add teams and sports in <button class="chip" data-tab="setup" type="button">Setup</button> to start the leaderboard.` : "The organizers are still adding teams and sports."}</p></div>`;
+  if (!c.teams.length || !c.sports.length) return `<div class="panel empty-hero"><h2>Getting ready</h2><p class="note">${canSetup() ? `Add teams and sports in <button class="linkish" data-tab="setup" type="button">Setup</button> to start the leaderboard.` : "The organizers are still adding teams and sports."}</p></div>`;
   const rows = overallTable(c); rows.forEach(r => r.podiumOk = r.pts > 0);
   const feed = allResults(c);
   // rank movement since the most recent result
   const prev = feed.length > 1 ? new Map(overallTable(comp(feed[0].id)).map(r => [r.id, r.pos])) : null;
   rows.forEach(r => r.move = prev ? (prev.get(r.id) || r.pos) - r.pos : 0);
+  const unitT = c.kind === "Intramurals" ? "College" : "Team";
   const cols = [
     { key: "pos", label: "#", cls: "pos" },
     { key: "move", label: "", sortable: false, cls: "move", fmt: r => r.move > 0 ? `<span class="up" title="Up ${r.move} since the last result">▲${r.move}</span>` : r.move < 0 ? `<span class="down" title="Down ${-r.move} since the last result">▼${-r.move}</span>` : `<span class="same" title="No change">–</span>` },
-    { key: "name", label: c.kind === "Intramurals" ? "College" : "Team", cls: "team", fmt: teamCell },
+    { key: "name", label: unitT, cls: "team", fmt: teamCell },
     { key: "g", label: "Gold", fmt: r => medalCell(r.g, "g") },
     { key: "sv", label: "Silver", fmt: r => medalCell(r.sv, "s") },
     { key: "b", label: "Bronze", fmt: r => medalCell(r.b, "b") },
@@ -486,11 +611,28 @@ function overallView(c) {
   ];
   const matches = c.sports.reduce((n, s) => n + s.matches.length, 0), events = c.sports.reduce((n, s) => n + s.events.length, 0);
   const done = c.sports.filter(hasResults).length;
-  const stats = [[c.teams.length, "", c.kind === "Intramurals" ? "Colleges" : "Teams"], [done, `<small>/${c.sports.length}</small>`, "Sports under way"], [matches, "", "Matches played"], [events, "", "Events finished"]]
-    .map(([v, extra, l], i) => `<div class="stat" style="--i:${i}"><b><span data-count="${v}">${v}</span>${extra}</b><span>${l}</span></div>`).join("");
+  const medals = rows.reduce((n, r) => n + r.g + r.sv + r.b, 0);
+  const top = rows.filter(r => r.pts > 0).slice(0, 3);
+
+  // KPI cards
+  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - 6 + i); return d; });
+  const perDay = days.map(d => feed.filter(r => { const t = new Date(r.at); return t >= d && t < new Date(d.getTime() + 864e5); }).length);
+  const week = perDay.reduce((a, b) => a + b, 0);
+  const kpis = `<div class="kpis">
+    <div class="kpi" style="--i:0"><div class="kpi-top"><span>Results posted</span>${I.results}</div><b class="kpi-num" data-count="${feed.length}">${feed.length}</b>
+      ${sparkline(perDay, days)}<p class="kpi-foot">${matches} match${matches === 1 ? "" : "es"} · ${events} event${events === 1 ? "" : "s"} · <b>${week}</b> this week</p></div>
+    <div class="kpi" style="--i:1"><div class="kpi-top"><span>Sports under way</span>${I.ball}</div><b class="kpi-num"><span data-count="${done}">${done}</span><small>/${c.sports.length}</small></b>
+      <div class="meter" role="img" aria-label="${done} of ${c.sports.length} sports have results"><span style="width:${c.sports.length ? Math.round(done / c.sports.length * 100) : 0}%"></span></div>
+      <p class="kpi-foot">${c.sports.length - done ? `${c.sports.length - done} still to start` : "Every sport has results"}</p></div>
+    <div class="kpi" style="--i:2"><div class="kpi-top"><span>Medals awarded</span>${I.medal}</div><b class="kpi-num" data-count="${medals}">${medals}</b>
+      <p class="kpi-medals">${medalCell(rows.reduce((n, r) => n + r.g, 0), "g")} gold ${medalCell(rows.reduce((n, r) => n + r.sv, 0), "s")} silver ${medalCell(rows.reduce((n, r) => n + r.b, 0), "b")} bronze</p>
+      <p class="kpi-foot">Top 3 of each sport</p></div>
+    <div class="kpi accent" style="--i:3"><div class="kpi-top"><span>Leading ${unitT.toLowerCase()}</span>${I.star}</div>
+      <b class="kpi-lead">${top[0] ? `${dot(top[0].team)}${esc(top[0].name)}` : "No results yet"}</b>
+      <p class="kpi-foot">${top[0] ? `${num(top[0].pts)} pts${top[1] ? ` · ${top[0].pts === top[1].pts ? "tied" : `+${num(top[0].pts - top[1].pts)} ahead`}` : ""}` : `${c.teams.length} ${unitT.toLowerCase()}s competing`}</p></div>
+  </div>`;
 
   // podium: 2nd, 1st, 3rd
-  const top = rows.filter(r => r.pts > 0).slice(0, 3);
   const lead = top.length > 1 ? top[0].pts - top[1].pts : 0;
   const step = (r, place) => !r ? `<div class="step p${place} empty"></div>` : `
     <button class="step p${place}" type="button" data-tab="team:${r.id}">
@@ -506,22 +648,105 @@ function overallView(c) {
       <div class="podium-stage">${step(top[1], 2)}${step(top[0], 1)}${step(top[2], 3)}</div>
     </section>` : `<section class="panel podium-wrap"><p class="eyebrow">Leading now</p><h2>No results yet</h2><p class="note">The podium fills in as soon as the first scores are in.</p></section>`;
 
-  const feedHTML = feed.length ? feed.slice(0, 8).map(r => `<li>${resultLine(c, r)}<span class="feed-meta">${esc(r.sport.name)} · ${timeAgo(r.at)}</span></li>`).join("") : `<li class="empty">Results will appear here as they come in.</li>`;
+  // points race: one bar per team, in its own color, labelled with name and points
+  const maxPts = Math.max(1, ...rows.map(r => r.pts));
+  const race = `<section class="panel race"><div class="sec-head"><h2>Points race</h2><span class="note">Overall points</span></div>
+    <div class="race-rows">${rows.slice(0, 8).map((r, i) => `<button class="race-row" type="button" data-tab="team:${r.id}" style="--i:${i}" title="${esc(r.name)}: ${num(r.pts)} pts, ${r.g} gold, ${r.sv} silver, ${r.b} bronze">
+      <span class="race-name">${dot(r.team)}${esc(r.name)}</span>
+      <span class="race-track"><span class="race-bar" style="width:${Math.max(r.pts ? 2 : 0, r.pts / maxPts * 100)}%;background:${esc(r.team.color)}"></span></span>
+      <b class="race-pts">${num(r.pts)}</b></button>`).join("")}</div>
+    ${rows.length > 8 ? `<button class="linkish" type="button" data-tab="teams">See all ${rows.length}</button>` : ""}</section>`;
+
+  const feedHTML = feed.length ? feed.slice(0, 7).map(r => `<li>${resultLine(c, r)}<span class="feed-meta">${esc(r.sport.name)} · ${timeAgo(r.at)}</span></li>`).join("") : `<li class="empty">Results will appear here as they come in.</li>`;
   const cards = c.sports.map(s => {
     const t = sportTable(c, s).filter(r => r.active);
     const n = s.format === "placing" ? s.events.length : s.matches.length;
     const leadT = t[0] ? `${dot(t[0].team)}${esc(t[0].name)}` : "No results yet";
-    return `<button class="card" type="button" data-tab="${s.id}"><span class="k">${esc(s.name)}</span><span class="v">${leadT}</span><span class="sub">${n} ${s.format === "placing" ? (n === 1 ? "event" : "events") : (n === 1 ? "match" : "matches")} · ${s.format === "placing" ? "placings" : "head-to-head"}</span></button>`;
+    return `<button class="card" type="button" data-tab="${s.id}"><span class="card-ico">${s.format === "placing" ? I.flag : I.ball}</span><span class="k">${esc(s.name)}</span><span class="v">${leadT}</span><span class="sub">${n} ${s.format === "placing" ? (n === 1 ? "event" : "events") : (n === 1 ? "match" : "matches")} · ${s.format === "placing" ? "placings" : "head-to-head"}</span></button>`;
   }).join("");
   return `<div class="home">
-    ${podium}
-    <div class="stats">${stats}</div>
+    ${kpis}
+    <div class="dash-row">${podium}${race}</div>
     <div class="home-grid">
       <section><div class="sec-head"><h2>Overall standings</h2><p class="note">Each sport's top 3 earn gold, silver, bronze. Points ${c.medalPts.map((p, i) => `${ordinal(i + 1)} ${num(p)}`).join(", ")}.</p></div>
-        <div class="panel">${tableHTML("overall", cols, rows)}<div class="foot"><span>▲▼ shows movement since the latest result. Tap a ${c.kind === "Intramurals" ? "college" : "team"} for its full record.</span></div></div></section>
-      <aside><div class="sec-head"><h2>Latest results</h2><span class="note">All sports</span></div><div class="panel"><ul class="list feed">${feedHTML}</ul></div></aside>
+        <div class="panel">${tableHTML("overall", cols, rows)}<div class="foot"><span>▲▼ shows movement since the latest result. Tap a ${unitT.toLowerCase()} for its full record.</span></div></div></section>
+      <aside><div class="sec-head"><h2>Latest results</h2><button class="linkish" type="button" data-tab="results">See all</button></div><div class="panel"><ul class="list feed">${feedHTML}</ul></div></aside>
     </div>
     <section><div class="sec-head"><h2>Sports</h2><p class="note">Pick a sport to see its table${canScore() ? " and enter results" : ""}.</p></div><div class="cards">${cards}</div></section>
+  </div>`;
+}
+
+// Results per day for the last 7 days, as a small area line with a dot per day.
+function sparkline(values, days) {
+  const w = 160, h = 40, max = Math.max(1, ...values), step = w / (values.length - 1);
+  const pts = values.map((v, i) => [Math.round(i * step * 10) / 10, Math.round((h - 4 - v / max * (h - 10)) * 10) / 10]);
+  const line = pts.map(p => p.join(",")).join(" ");
+  const fmt = d => d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return `<svg class="spark" viewBox="-4 -4 ${w + 8} ${h + 8}" role="img" aria-label="Results per day, last 7 days: ${values.join(", ")}">
+    <polygon points="0,${h} ${line} ${w},${h}" class="spark-area"/><polyline points="${line}" class="spark-line"/>
+    ${pts.map((p, i) => `<g class="spark-pt"><circle cx="${p[0]}" cy="${p[1]}" r="9" class="spark-hit"><title>${fmt(days[i])}: ${values[i]} result${values[i] === 1 ? "" : "s"}</title></circle><circle cx="${p[0]}" cy="${p[1]}" r="${i === pts.length - 1 ? 3.5 : 0}" class="spark-dot"/></g>`).join("")}
+  </svg>`;
+}
+
+function teamsView(c) {
+  const rows = overallTable(c);
+  if (!rows.length) return `<div class="panel empty-hero"><h2>No ${c.kind === "Intramurals" ? "colleges" : "teams"} yet</h2>${canSetup() ? `<p class="note">Add them in <button class="linkish" data-tab="setup" type="button">Setup</button>.</p>` : ""}</div>`;
+  return `<div class="team-grid">${rows.map((r, i) => `<button class="team-card" type="button" data-tab="team:${r.id}" style="--i:${Math.min(i, 12)};--tc:${esc(r.team.color)}">
+      <span class="tc-rank">${r.pts ? ordinal(r.pos) : "–"}</span>
+      <span class="tc-mark">${r.team.logo ? `<img src="${esc(r.team.logo)}" alt="">` : `<span class="step-dot" style="background:${esc(r.team.color)}"></span>`}</span>
+      <b class="tc-name">${esc(r.name)}</b>
+      <span class="tc-medals">${medalCell(r.g, "g")}${medalCell(r.sv, "s")}${medalCell(r.b, "b")}</span>
+      <span class="tc-pts"><b>${num(r.pts)}</b> pts · ${r.sports} sport${r.sports === 1 ? "" : "s"}</span>
+    </button>`).join("")}</div>`;
+}
+
+let resultsFilter = "all";
+function resultsView(c) {
+  const all = allResults(c), list = resultsFilter === "all" ? all : all.filter(r => r.sport.id === resultsFilter);
+  const chips = `<div class="chips filter-chips"><button class="chip" type="button" data-rfilter="all" aria-pressed="${resultsFilter === "all"}">All sports <small>${all.length}</small></button>${c.sports.map(s => { const n = all.filter(r => r.sport.id === s.id).length; return `<button class="chip" type="button" data-rfilter="${s.id}" aria-pressed="${resultsFilter === s.id}">${esc(s.name)} <small>${n}</small></button>`; }).join("")}</div>`;
+  const dayOf = r => new Date(r.at).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  let out = "", last = "";
+  for (const r of list) {
+    const d = dayOf(r);
+    if (d !== last) { out += `${last ? "</ul></section>" : ""}<section class="day"><h3 class="day-head">${esc(d)}</h3><ul class="list feed panel">`; last = d; }
+    out += `<li>${resultLine(c, r)}<span class="feed-meta">${esc(r.sport.name)} · ${new Date(r.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}${canScore() && r.by ? ` · entered by ${esc(personName(r.by))}` : ""}</span></li>`;
+  }
+  if (last) out += "</ul></section>";
+  return `<div class="results-page">${chips}${out || `<div class="panel"><p class="empty">No results yet.</p></div>`}</div>`;
+}
+
+function profileView() {
+  const p = me || {}, type = p.member_type || "student";
+  const joined = p.created_at ? new Date(p.created_at).toLocaleDateString(undefined, { month: "long", year: "numeric" }) : "";
+  const access = { student: "You can follow every standing and result.", coordinator: "You can enter match scores and event placings.", admin: "You can manage competitions, teams, sports and people." }[role];
+  return `<div class="profile">
+    <section class="panel profile-hero">
+      <div class="ph-avatar">${avatar(p, "xl")}
+        <label class="ph-upload upload" tabindex="0" title="Change photo" aria-label="Change photo">${I.camera}<input type="file" accept="image/png,image/jpeg,image/webp" data-upload="avatar" hidden></label></div>
+      <div class="ph-text"><p class="eyebrow">${MEMBER[type]}</p><h2 class="leader-name">${esc(p.full_name || "Your name")}</h2>
+        <p class="note">${esc(p.email || session.user.email)}${joined ? ` · Joined ${joined}` : ""}</p>
+        <div class="ph-badges"><span class="badge ${role}">${ROLE_LABEL[role]}</span>${p.college ? `<span class="tag">${esc(p.college)}</span>` : ""}</div></div>
+      ${p.avatar_url ? `<button class="btn ghost small" type="button" data-confirm data-clear-avatar>Remove photo</button>` : ""}
+      ${msgHTML("avatarMsg")}
+    </section>
+    <div class="profile-grid">
+      <form id="profileForm" class="panel" novalidate>
+        <h2>Personal details</h2>
+        <label for="pfName">Full name<input id="pfName" type="text" autocomplete="name" maxlength="80" value="${esc(p.full_name || "")}"></label>
+        <label for="pfCollege">College or department<input id="pfCollege" type="text" maxlength="80" placeholder="e.g. College of Engineering" value="${esc(p.college || "")}"></label>
+        <fieldset class="types"><legend>I am a</legend>
+          ${MEMBER_INFO.map(([k, label, desc, icon]) => `<label class="type-card" for="pfType-${k}"><input type="radio" name="pfType" id="pfType-${k}" value="${k}"${k === type ? " checked" : ""}><span class="tc-ico">${icon}</span><b>${label}</b><span class="note">${desc}</span></label>`).join("")}
+        </fieldset>
+        <button class="btn" type="submit">Save profile</button>${msgHTML("profileMsg")}
+      </form>
+      <div class="profile-side">
+        <section class="panel side-card"><h2>Access</h2><p><span class="badge ${role}">${ROLE_LABEL[role]}</span></p><p class="note">${access} Access is set by an admin${role === "admin" ? " in People" : ""}.</p></section>
+        <form id="passForm" class="panel side-card" novalidate><h2>Change password</h2>
+          <label for="pfPass">New password<input id="pfPass" type="password" autocomplete="new-password" minlength="8"></label>
+          <button class="btn ghost" type="submit">Update password</button>${msgHTML("passMsg")}</form>
+        <button class="btn ghost" type="button" data-signout>${I.logout} Log out</button>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -710,17 +935,17 @@ function setupView(c) {
 
 function peopleView() {
   const q = (msgs.peopleFilter?.text || "").toLowerCase();
-  const shown = people.filter(p => !q || [p.full_name, p.email, p.college].some(x => (x || "").toLowerCase().includes(q)));
+  const shown = people.filter(p => !q || [p.full_name, p.email, p.college, MEMBER[p.member_type]].some(x => (x || "").toLowerCase().includes(q)));
   const counts = ["admin", "coordinator", "student"].map(r => `<span><b>${people.filter(p => p.role === r).length}</b> ${ROLE_LABEL[r].toLowerCase()}${people.filter(p => p.role === r).length === 1 ? "" : "s"}</span>`).join("");
-  const rows = shown.map(p => `<tr><td><b>${esc(p.full_name || "No name")}</b><div class="sub note">${esc(p.email)}</div></td><td class="opt">${esc(p.college)}</td>
+  const rows = shown.map(p => `<tr><td><div class="person">${avatar(p)}<div><b>${esc(p.full_name || "No name")}</b><div class="sub note">${esc(p.email)}</div></div></div></td><td class="opt">${MEMBER[p.member_type] ? `<span class="tag">${MEMBER[p.member_type]}</span>` : ""}</td><td class="opt">${esc(p.college)}</td>
     <td><select data-role-for="${p.id}" aria-label="Role for ${esc(p.full_name || p.email)}">${["student", "coordinator", "admin"].map(r => `<option value="${r}"${p.role === r ? " selected" : ""}>${ROLE_LABEL[r]}</option>`).join("")}</select></td></tr>`).join("")
-    || `<tr><td colspan="3" class="empty">No one matches that search.</td></tr>`;
+    || `<tr><td colspan="4" class="empty">No one matches that search.</td></tr>`;
   return `<section style="display:grid;gap:10px">
     <div class="sec-head"><h2>People</h2><div class="meta">${counts}</div></div>
-    <p class="note">Everyone who signs up starts as a student. Make sports coordinators here so they can enter scores. Changes apply the next time they load the page.</p>
+    <p class="note">Everyone who signs up starts as a viewer, who can follow standings. Make sports coordinators here so they can enter scores. "I am a" is what people chose for themselves.</p>
     <input id="peopleSearch" type="search" placeholder="Search by name, email or college" aria-label="Search people" value="${esc(msgs.peopleFilter?.text || "")}">
     ${msgHTML("peopleMsg")}
-    <div class="panel"><div class="table-scroll"><table class="people"><thead><tr><th class="team">Person</th><th class="team opt">College</th><th class="team">Role</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+    <div class="panel"><div class="table-scroll"><table class="people"><thead><tr><th class="team">Person</th><th class="team opt">I am a</th><th class="team opt">College</th><th class="team">Access</th></tr></thead><tbody>${rows}</tbody></table></div></div>
   </section>`;
 }
 
@@ -748,7 +973,7 @@ function prepareImage(file, kind) {
     if (file.size > 15 * 1024 * 1024) return reject(new Error("That image is over 15 MB. Choose a smaller one."));
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
-      const max = kind === "background" ? 1920 : 512;
+      const max = kind === "background" ? 1920 : kind === "avatar" ? 400 : 512;
       const w0 = img.naturalWidth || 512, h0 = img.naturalHeight || 512, scale = Math.min(1, max / Math.max(w0, h0));
       const cv = document.createElement("canvas"); cv.width = Math.round(w0 * scale); cv.height = Math.round(h0 * scale);
       cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url);
@@ -791,6 +1016,23 @@ async function clearImage(kind, teamId) {
   return error;
 }
 
+const avatarPath = url => { const i = (url || "").indexOf("/avatars/"); return i < 0 ? null : decodeURIComponent(url.slice(i + 9).split("?")[0]); };
+async function uploadAvatar(file) {
+  setMsg("avatarMsg", "Uploading…", true);
+  try {
+    const { blob, type, ext } = await prepareImage(file, "avatar");
+    const path = `${session.user.id}/avatar-${Date.now().toString(36)}.${ext}`;
+    const { error: upErr } = await sb.storage.from("avatars").upload(path, blob, { contentType: type, cacheControl: "31536000", upsert: false });
+    if (upErr) throw upErr;
+    const url = sb.storage.from("avatars").getPublicUrl(path).data.publicUrl, old = me?.avatar_url;
+    const { error } = await sb.from("profiles").update({ avatar_url: url }).eq("id", session.user.id);
+    if (error) throw error;
+    if (avatarPath(old)) sb.storage.from("avatars").remove([avatarPath(old)]);
+    setMsg("avatarMsg", "Photo saved.", true);
+  } catch (e) { setMsg("avatarMsg", e.message || "Upload failed. Try again."); }
+  await loadProfile(); await refresh();
+}
+
 /* ---------- actions ---------- */
 function armed(btn) {
   if (btn.hasAttribute("data-armed")) return true;
@@ -814,8 +1056,31 @@ async function addSport(c, name, over) {
   setMsg("sportMsg", `Added ${name}. It now has its own tab.`, true); await refresh();
 }
 
+function closePanels(except) {
+  if (except !== "notif") { const n = $("notifPanel"); if (n && !n.hidden) { n.hidden = true; document.querySelector("[data-bell]")?.setAttribute("aria-expanded", "false"); } }
+  if (except !== "search") { const r = $("searchResults"); if (r) r.hidden = true; if (!$("globalSearch")?.value) document.body.classList.remove("searching"); }
+}
+
 document.addEventListener("click", async e => {
   const t = e.target;
+  if (!t.closest(".bell-wrap")) closePanels(t.closest("#searchBox") ? "search" : null);
+  else if (!t.closest("#searchBox")) closePanels("notif");
+  if (t.closest("[data-toggle-nav]")) {
+    if (matchMedia("(max-width: 1023px)").matches) document.body.classList.toggle("nav-open");
+    else { document.body.classList.toggle("nav-mini"); try { localStorage.setItem("sl-mini", document.body.classList.contains("nav-mini") ? "1" : ""); } catch (err) {} }
+    return;
+  }
+  if (t.closest("[data-close-nav]")) return document.body.classList.remove("nav-open");
+  if (t.closest("[data-open-search]")) { document.body.classList.add("searching"); return $("globalSearch")?.focus(); }
+  if (t.closest("[data-bell]")) {
+    const c = comp(), panel = $("notifPanel"); if (!c || !panel) return;
+    const open = panel.hidden;
+    panel.hidden = !open; t.closest("[data-bell]").setAttribute("aria-expanded", String(open));
+    if (open) { panel.innerHTML = notifHTML(c); const latest = allResults(c)[0]?.at; if (latest) markSeen(latest); paintBell(c); }
+    return;
+  }
+  const rf = t.closest("[data-rfilter]");
+  if (rf) { resultsFilter = rf.dataset.rfilter; return render(); }
   const au = t.closest("[data-auth]");
   if (au) { authMode = au.dataset.auth; delete msgs.authMsg; return authScreen(); }
   const pub = t.closest("[data-pub]");
@@ -841,7 +1106,11 @@ document.addEventListener("click", async e => {
     return;
   }
   const tab = t.closest("[data-tab]");
-  if (tab) { view = tab.dataset.tab; Object.keys(msgs).forEach(k => delete msgs[k]); rememberUi(); render(); window.scrollTo({ top: 0 }); return; }
+  if (tab) {
+    view = tab.dataset.tab; Object.keys(msgs).forEach(k => delete msgs[k]); rememberUi();
+    document.body.classList.remove("nav-open"); closeSearch(); closePanels();
+    render(); window.scrollTo({ top: 0 }); return;
+  }
   const so = t.closest("[data-sort]");
   if (so) {
     const k = so.dataset.sort, vk = so.dataset.view, cur = sorts[vk] || { key: "pos", dir: "asc" };
@@ -849,6 +1118,15 @@ document.addEventListener("click", async e => {
     return render();
   }
   if (t.closest("[data-new-comp]") && canSetup()) return newComp();
+  const ca = t.closest("[data-clear-avatar]");
+  if (ca) {
+    if (!armed(ca)) return;
+    const old = me?.avatar_url;
+    const { error } = await sb.from("profiles").update({ avatar_url: null }).eq("id", session.user.id);
+    if (error) return setMsg("avatarMsg", errText(error));
+    if (avatarPath(old)) sb.storage.from("avatars").remove([avatarPath(old)]);
+    await loadProfile(); return render();
+  }
   const c = comp(); if (!c) return;
   const pr = t.closest("[data-preset]");
   if (pr && canSetup()) return addSport(c, pr.dataset.preset, {});
@@ -883,11 +1161,16 @@ document.addEventListener("animationend", e => {
 });
 
 document.addEventListener("keydown", e => {
+  const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
+  if (e.key === "/" && !typing && $("globalSearch")) { e.preventDefault(); document.body.classList.add("searching"); return $("globalSearch").focus(); }
+  if (e.key === "Escape") { closeSearch(); closePanels(); document.body.classList.remove("nav-open"); return; }
+  if (e.key === "Enter" && e.target.id === "globalSearch") { e.preventDefault(); return document.querySelector("#searchResults .sr-item")?.click(); }
   const l = e.target.closest?.("label.upload");
   if (l && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); l.querySelector("input")?.click(); }
 });
 
 document.addEventListener("input", e => {
+  if (e.target.id === "globalSearch") return paintSearch();
   if (e.target.id === "peopleSearch") {
     msgs.peopleFilter = { text: e.target.value };
     const pos = e.target.selectionStart; render(); const el = $("peopleSearch"); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
@@ -903,6 +1186,7 @@ document.addEventListener("change", async e => {
     return refresh();
   }
   if (t.id === "spFormat" || t.id === "spDraws") return applySportFormat();
+  if (t.dataset.upload === "avatar" && t.files[0]) return uploadAvatar(t.files[0]);
   if (t.dataset.upload && canSetup() && t.files[0]) return uploadImage(t.dataset.upload, t.files[0], t.dataset.team);
   if (t.dataset.roleFor && canSetup()) {
     const p = people.find(x => x.id === t.dataset.roleFor);
@@ -930,7 +1214,7 @@ document.addEventListener("submit", async e => {
     if (!full_name) return setMsg("authMsg", "Enter your full name.");
     if (!/^\S+@\S+\.\S+$/.test(email)) return setMsg("authMsg", "Enter a valid email address.");
     if (password.length < 8) return setMsg("authMsg", "Use a password with at least 8 characters.");
-    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name, college }, emailRedirectTo: location.origin + location.pathname } });
+    const { data, error } = await sb.auth.signUp({ email, password, options: { data: { full_name, college, member_type: $("aType").value }, emailRedirectTo: location.origin + location.pathname } });
     if (error) return setMsg("authMsg", error.message);
     if (!data.session) setMsg("authMsg", `Check ${email} for a link to confirm your account, then log in.`, true);
     return;
@@ -947,6 +1231,22 @@ document.addEventListener("submit", async e => {
     const { error } = await sb.auth.updateUser({ password });
     if (error) return setMsg("authMsg", error.message);
     recovering = false; delete msgs.authMsg; return start();
+  }
+
+  if (f.id === "profileForm") {
+    const full_name = $("pfName").value.trim().replace(/\s+/g, " "), college = $("pfCollege").value.trim();
+    const member_type = f.querySelector('input[name="pfType"]:checked')?.value || "student";
+    if (!full_name) return setMsg("profileMsg", "Enter your full name.");
+    const { error } = await sb.from("profiles").update({ full_name, college, member_type }).eq("id", session.user.id);
+    if (error) return setMsg("profileMsg", errText(error));
+    setMsg("profileMsg", "Profile saved.", true); await loadProfile(); return refresh();
+  }
+  if (f.id === "passForm") {
+    const password = $("pfPass").value;
+    if (password.length < 8) return setMsg("passMsg", "Use a password with at least 8 characters.");
+    const { error } = await sb.auth.updateUser({ password });
+    if (error) return setMsg("passMsg", error.message);
+    $("pfPass").value = ""; return setMsg("passMsg", "Password updated.", true);
   }
 
   const c = comp(); if (!c) return;
@@ -1026,6 +1326,7 @@ async function start() {
     .subscribe(status => { const on = status === "SUBSCRIBED"; if (on !== liveOn) { liveOn = on; if (shellReady) render(); if (on) scheduleReload(); } });
 }
 
+try { if (localStorage.getItem("sl-mini")) document.body.classList.add("nav-mini"); } catch (e) {}
 if (!sb) setupNeededScreen();
 else {
   sb.auth.onAuthStateChange((event, s) => {
