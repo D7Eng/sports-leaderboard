@@ -11,12 +11,14 @@ A live, multi-sport leaderboard for school intramurals, campus events and league
 - **Dashboard.** A sidebar menu, search, result notifications, key stats with a weekly activity chart, a points race, a podium for the top three and rank movement arrows.
 - **Member profiles.** Everyone can add a photo, edit their details and say whether they're a student, athlete, faculty member or guest.
 - **Team pages.** Each college's medals, standing in every sport and recent results.
+- **Printable results.** Coordinators and admins can download or print the official results as a clean PDF: event letterhead, numbered sections with a contents list, overall and per-sport standings, every result and signature lines.
 - **Live leader on the login screen.** Visitors see who's number 1 in every running competition; everything else stays behind sign-in.
 - **Competition login links.** Each competition has its own link and branded login page, so participants go straight to their event.
 - **Animated intro.** The event logo plays a short intro after logging in.
 - **Multiple competitions.** Run intramurals, leagues and tournaments side by side.
-- **Custom branding.** Upload an event or school logo, team logos and a page background, and choose a three-color theme palette from presets or your own colors.
+- **Custom branding.** Upload an event or school logo, team logos and a page background, and pick a color theme: one color and its shades, from presets or your own.
 - **Sport icons.** Each sport gets a matching icon, from basketball and volleyball to chess, esports and swimming.
+- **Light and dark mode.** Switch any time from the top bar, or follow the device setting.
 - **Mobile friendly.** Works in any modern browser on phones, tablets and desktops.
 
 ## Roles

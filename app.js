@@ -183,7 +183,7 @@ function tableHTML(viewKey, cols, rows) {
     out.sort((x, y) => { const a = x[st.key], b = y[st.key]; return (typeof a === "string" ? a.localeCompare(b) : a - b) * m || x.pos - y.pos; });
   } else if (st.dir === "desc") out.reverse();
   const head = cols.map(c => {
-    const aria = st.key === c.key ? ` aria-sort="${st.dir === "asc" ? "ascending" : "descending"}"` : "";
+    const aria = sorts[viewKey] && st.key === c.key ? ` aria-sort="${st.dir === "asc" ? "ascending" : "descending"}"` : "";
     const inner = c.sortable === false ? c.label : `<button type="button" data-sort="${c.key}" data-view="${viewKey}" title="${esc(c.title || c.label)}">${c.label}</button>`;
     return `<th scope="col" class="${c.cls || ""}"${aria}>${inner}</th>`;
   }).join("");
@@ -235,11 +235,14 @@ function authScreen() {
         <button class="btn" type="submit">${signup ? "Create account" : "Log in"}</button>${msgHTML("authMsg")}
         ${signup ? `<p class="note">New accounts can view every standing. An admin can make you a coordinator so you can enter scores.</p>` : `<button class="linkish" type="button" data-auth="forgot">Forgot password?</button>`}
       </form>`;
-  $("root").innerHTML = `<div class="auth auth-split">
-    <section class="live-card" id="liveCard">${publicPanel()}</section>
-    <div class="auth-card">
-      <div class="auth-brand" id="authBrand">${authBrand()}</div>
-      <div class="panel">${form}</div>
+  $("root").innerHTML = `<div class="auth">
+    <button class="icon-btn theme-float" type="button" data-theme-toggle></button>
+    <div class="auth-split">
+      <section class="live-card" id="liveCard">${publicPanel()}</section>
+      <div class="auth-card">
+        <div class="auth-brand" id="authBrand">${authBrand()}</div>
+        <div class="panel">${form}</div>
+      </div>
     </div>
   </div>`;
   const live = $("liveCard");
@@ -247,7 +250,7 @@ function authScreen() {
   live.addEventListener("mouseleave", () => live.classList.remove("paused"));
   live.addEventListener("focusin", () => live.classList.add("paused"));
   live.addEventListener("focusout", () => live.classList.remove("paused"));
-  startPublicFeed();
+  applyTheme(); startPublicFeed();
 }
 
 /* ---------- public live ranking (login screen) ---------- */
@@ -411,7 +414,34 @@ const I = {
   star: ico('<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>'),
   medal: ico('<circle cx="12" cy="15" r="6"/><path d="M8.5 10L6 3h4l2 4 2-4h4l-2.5 7"/>'),
   close: ico('<path d="M6 6l12 12M18 6L6 18"/>'),
+  download: ico('<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>'),
+  printer: ico('<path d="M6 9V3h12v6M6 18H4v-7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/>'),
+  sun: ico('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+  moon: ico('<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>'),
+  monitor: ico('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
 };
+
+/* ---------- light and dark mode ---------- */
+// "light", "dark" or "system" (follow the device). index.html sets the first look before this file loads.
+let themePref = "system";
+try { themePref = localStorage.getItem("sl-theme") || "system"; } catch (e) {}
+if (!["light", "dark", "system"].includes(themePref)) themePref = "system";
+const darkQuery = matchMedia("(prefers-color-scheme: dark)");
+const isDark = () => themePref === "dark" || (themePref === "system" && darkQuery.matches);
+function applyTheme() {
+  const dark = isDark(), label = dark ? "Switch to light mode" : "Switch to dark mode";
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#151b23" : "#ffffff");
+  document.querySelectorAll("[data-theme-toggle]").forEach(b => { b.innerHTML = dark ? I.sun : I.moon; b.title = label; b.setAttribute("aria-label", label); });
+  document.querySelectorAll("[data-theme-set]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.themeSet === themePref)));
+}
+function setTheme(t) {
+  themePref = t;
+  try { t === "system" ? localStorage.removeItem("sl-theme") : localStorage.setItem("sl-theme", t); } catch (e) {}
+  applyTheme();
+}
+darkQuery.addEventListener("change", () => { if (themePref === "system") applyTheme(); });
+applyTheme();
 
 /* ---------- sport icons: matched by the sport's name, same line style ---------- */
 const SPORT_ICONS = [
@@ -447,32 +477,26 @@ const SPORT_ICONS = [
 const TROPHY = '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/>';
 const sportIcon = s => ico((SPORT_ICONS.find(([re]) => re.test(String(s.name || "").toLowerCase())) || [null, s.format === "placing" ? TROPHY : TROPHY])[1]);
 
-/* ---------- theme palettes: primary, secondary, highlight ---------- */
+/* ---------- color themes: shades of one color (main, dark shade, light shade) ---------- */
 const PALETTES = [
-  ["Emerald & Gold", "#1d6a43", "#0f3d2e", "#e0b44c"],
-  ["Navy & Orange", "#1d3f8a", "#0b1f4d", "#f28c28"],
-  ["Maroon & Gold", "#7a1f2b", "#3d0f17", "#f2c14e"],
-  ["Royal & Silver", "#2453c9", "#142e73", "#aab8cc"],
-  ["Purple & Gold", "#5b2a86", "#2e1446", "#f6c445"],
-  ["Crimson & Charcoal", "#b3202a", "#2b2d33", "#f4a261"],
-  ["Teal & Coral", "#0f7c7a", "#0a4a52", "#ff7f61"],
-  ["Forest & Lime", "#2f6b2f", "#173d1f", "#b5e04b"],
-  ["Sky & Sun", "#1e88c8", "#0d3b66", "#ffd166"],
-  ["Sunset", "#e4572e", "#8c1c3a", "#ffc914"],
+  ["Green", "#1f7a4d"], ["Emerald", "#078a5c"], ["Teal", "#0e7c82"], ["Sky", "#1b7fc1"], ["Blue", "#2456c5"], ["Navy", "#1f3a70"], ["Indigo", "#4a43b5"],
+  ["Purple", "#6c38a6"], ["Maroon", "#7c1f35"], ["Red", "#b3261e"], ["Orange", "#c4521a"], ["Gold", "#a77812"], ["Brown", "#7a4f2e"], ["Slate", "#3d4c5e"],
 ];
-const paletteOf = c => [c.accent || "#1d6a43", c.accent2 || "", c.accent3 || ""];
+const shadesOf = main => [main, mixHex(main, "#000000", .5), mixHex(main, "#ffffff", .62)];
+const strip = main => [mixHex(main, "#ffffff", .8), mixHex(main, "#ffffff", .55), main, mixHex(main, "#000000", .3), mixHex(main, "#000000", .55)];
+const paletteOf = c => [c.accent || "#1f7a4d", c.accent2 || "", c.accent3 || ""];
 function paletteHTML(c) {
-  const [p1, p2, p3] = paletteOf(c);
-  const cur = [p1, p2, p3].join(",").toLowerCase();
-  return `<div class="palette-field"><span class="field-label">Theme palette</span>
-    <div class="presets">${PALETTES.map(([name, a, b, h]) => `<button type="button" class="preset" data-palette="${a},${b},${h}" aria-pressed="${cur === [a, b, h].join(",").toLowerCase()}" title="${name}"><span class="pz"><i style="background:${a}"></i><i style="background:${b}"></i><i style="background:${h}"></i></span><small>${name}</small></button>`).join("")}</div>
-    <div class="row3 pal-pickers">
-      <label for="cAccent">Primary<input id="cAccent" type="color" value="${esc(p1)}"></label>
-      <label for="cAccent2">Secondary<input id="cAccent2" type="color" value="${esc(p2 || mixHex(p1, "#000000", .45))}"></label>
-      <label for="cAccent3">Highlight<input id="cAccent3" type="color" value="${esc(p3 || "#e0b44c")}"></label>
+  const [p1, p2, p3] = paletteOf(c), [, d2, d3] = shadesOf(p1);
+  return `<div class="palette-field"><span class="field-label">Color theme</span>
+    <p class="note">Pick one color. Buttons, menus, the dashboard banner and the printed results all use its shades.</p>
+    <div class="presets">${PALETTES.map(([name, a]) => `<button type="button" class="preset" data-palette="${a}" aria-pressed="${a.toLowerCase() === p1.toLowerCase()}" title="${name}"><span class="pz">${strip(a).map(x => `<i style="background:${x}"></i>`).join("")}</span><small>${name}</small></button>`).join("")}</div>
+    <div class="pal-custom">
+      <label for="cAccent">Your own color<input id="cAccent" type="color" value="${esc(p1)}"></label>
+      <details class="pal-fine"><summary>Fine-tune the shades</summary>
+        <div class="row2"><label for="cAccent2">Dark shade<input id="cAccent2" type="color" value="${esc(p2 || d2)}"></label><label for="cAccent3">Light shade<input id="cAccent3" type="color" value="${esc(p3 || d3)}"></label></div>
+      </details>
     </div>
-    <div class="pal-preview" aria-hidden="true"><span class="pp-bar"></span><span class="pp-btn">Button</span><span class="pp-chip">Highlight</span></div>
-    <p class="note">Primary colors buttons and menus, secondary blends into the sidebar and banners, and highlight marks what's active. Pick a preset or your own; the page previews it until you save.</p>
+    <div class="pal-preview" aria-hidden="true"><span class="pp-shades"><i></i><i></i><i></i><i></i><i></i></span><span class="pp-btn">Button</span><span class="pp-chip">Selected</span></div>
   </div>`;
 }
 function mixHex(a, b, t) {
@@ -480,11 +504,17 @@ function mixHex(a, b, t) {
   const x = p(a), y = p(b);
   return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("");
 }
+// Picking a main color resets the two shades to match it; the page previews it until saved.
+function setPalette(main) {
+  const [a, b, h] = shadesOf(main);
+  $("cAccent").value = a; $("cAccent2").value = b; $("cAccent3").value = h;
+  previewPalette();
+}
 function previewPalette() {
   if (!$("cAccent")) return;
   const c = comp();
   applyBranding({ ...c, accent: $("cAccent").value, accent2: $("cAccent2").value, accent3: $("cAccent3").value });
-  const cur = [$("cAccent").value, $("cAccent2").value, $("cAccent3").value].join(",").toLowerCase();
+  const cur = $("cAccent").value.toLowerCase();
   document.querySelectorAll(".preset").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.palette.toLowerCase() === cur)));
 }
 
@@ -524,8 +554,11 @@ function buildShell() {
           <div class="search" id="searchBox">${I.search}<input id="globalSearch" type="search" placeholder="Search teams and sports" aria-label="Search teams and sports" autocomplete="off"><kbd>/</kbd><div class="search-results" id="searchResults" hidden></div></div>
           <button class="icon-btn only-phone" type="button" data-open-search aria-label="Search">${I.search}</button>
           <span id="livePill" class="hide-phone"></span>
+          <button class="icon-btn" type="button" data-export id="exportBtn" aria-label="Download results as PDF" title="Download results (PDF)" hidden>${I.printer}</button>
           <button class="icon-btn hide-phone" type="button" data-share aria-label="Copy link to this competition" title="Copy link">${I.share}</button>
+          <button class="icon-btn" type="button" data-theme-toggle></button>
           <div class="bell-wrap"><button class="icon-btn" type="button" data-bell aria-label="Latest results" aria-expanded="false">${I.bell}<span class="bell-count" id="bellCount" hidden></span></button><div class="notif-panel" id="notifPanel" hidden></div></div>
+          <span class="top-sep" aria-hidden="true"></span>
           <button class="avatar-btn" type="button" data-tab="profile" id="avatarBtn" aria-label="My profile"></button>
         </div>
       </header>
@@ -562,6 +595,77 @@ function pageHeading(c) {
   const s = c.sports.find(x => x.id === view);
   if (s) return [s.format === "placing" ? "Placings" : "Head-to-head", s.name];
   return [c.name, "Dashboard"];
+}
+
+/* ---------- results PDF (coordinators and admins) ---------- */
+const exportBtn = sportId => canScore() ? `<button class="btn ghost small ex-btn" type="button" data-export="${esc(sportId)}">${I.download}<span>PDF</span></button>` : "";
+function closeModal() { document.querySelector(".modal-wrap")?.remove(); document.body.classList.remove("modal-open"); }
+function openExport(sportId) {
+  const c = comp(); if (!c || !canScore()) return;
+  closeModal(); delete msgs.exMsg;
+  const pick = c.sports.some(s => s.id === sportId) ? sportId : "all";
+  const el = document.createElement("div"); el.className = "modal-wrap"; el.dataset.closeModal = "";
+  el.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="exTitle">
+    <div class="modal-head"><div><p class="eyebrow">Official results</p><h2 id="exTitle">Download results</h2></div>
+      <button class="icon-btn" type="button" data-close-modal aria-label="Close">${I.close}</button></div>
+    <div class="ex-body">
+      <div class="ex-preview" aria-hidden="true">
+        <div class="exp-band">${c.logo ? `<img src="${esc(c.logo)}" alt="">` : ""}<div><i>${esc(c.kind || "Competition")}</i><b>${esc(c.name)}</b></div></div>
+        <div class="exp-page"><span class="exp-boxes"><s></s><s></s><s></s><s></s></span><span class="exp-h"></span><span class="exp-table"><s></s><s></s><s></s><s></s><s></s><s></s></span><span class="exp-h"></span><span class="exp-table"><s></s><s></s><s></s><s></s></span><span class="exp-h"></span><span class="exp-table"><s></s><s></s><s></s></span></div>
+      </div>
+      <form id="exportForm" novalidate>
+        <label for="exSport">Sports<select id="exSport"><option value="all">All sports</option>${c.sports.map(s => `<option value="${s.id}"${s.id === pick ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label>
+        <fieldset class="ex-opts"><legend>Include</legend>
+          <label class="check" for="exOverall"><input id="exOverall" type="checkbox"${pick === "all" ? " checked" : ""}>Summary, leaders and overall standings</label>
+          <label class="check" for="exStandings"><input id="exStandings" type="checkbox" checked>Standings for each sport</label>
+          <label class="check" for="exResults"><input id="exResults" type="checkbox" checked>Every match and event result</label>
+          <label class="check" for="exSign"><input id="exSign" type="checkbox" checked>Signature lines for certifying</label>
+          <label class="check" for="exNewPage"><input id="exNewPage" type="checkbox">Start each sport on a new page</label>
+        </fieldset>
+        <label for="exPaper">Paper size<select id="exPaper"><option value="a4">A4</option><option value="letter">Letter (8.5 × 11 in)</option><option value="legal">Legal (8.5 × 14 in)</option></select></label>
+        <div class="ex-actions"><button class="btn" type="submit">${I.download}<span>Download PDF</span></button><button class="btn ghost" type="button" data-export-print>${I.printer}<span>Print</span></button></div>
+        ${msgHTML("exMsg")}
+      </form>
+    </div>
+  </div>`;
+  document.body.append(el); document.body.classList.add("modal-open");
+  el.querySelector("#exSport").focus();
+}
+function reportData(c, sportId) {
+  const nameOf = id => teamOf(c, id)?.name || "Removed team";
+  const sel = sportId === "all" ? c.sports : c.sports.filter(s => s.id === sportId);
+  return {
+    comp: { name: c.name, kind: c.kind, logo: c.logo, accent: c.accent, accent2: c.accent2, accent3: c.accent3, medalPts: c.medalPts },
+    unitT: c.kind === "Intramurals" ? "College" : "Team",
+    teams: c.teams,
+    overall: overallTable(c).map(r => ({ id: r.id, pos: r.pos, name: r.name, g: r.g, sv: r.sv, b: r.b, sports: r.sports, pts: r.pts })),
+    sports: sel.map(s => ({
+      name: s.name, format: s.format, draws: s.draws, rows: sportTable(c, s),
+      scoring: s.format === "placing" ? `Points per place ${s.places.map(num).join(", ")}` : `Win ${num(s.win)}${s.draws ? `, draw ${num(s.draw)}` : ""}, loss ${num(s.loss)}`,
+      matches: s.matches.map(m => ({ h: nameOf(m.h), a: nameOf(m.a), hs: m.hs, as: m.as, at: m.at })),
+      events: s.events.map(e => ({ name: e.name, order: e.order.map(nameOf), at: e.at })),
+    })),
+    stats: { teams: c.teams.length, sports: c.sports.length, done: c.sports.filter(hasResults).length,
+      matches: c.sports.reduce((n, s) => n + s.matches.length, 0), events: c.sports.reduce((n, s) => n + s.events.length, 0) },
+    by: myName(), byRole: role === "admin" ? "Administrator" : "Sports Coordinator", generated: new Date(),
+  };
+}
+async function makeReport(print) {
+  const c = comp(); if (!c || !canScore()) return;
+  const opts = { overall: $("exOverall").checked, standings: $("exStandings").checked, results: $("exResults").checked, signatures: $("exSign").checked, newPage: $("exNewPage").checked, paper: $("exPaper").value };
+  if (!opts.overall && !opts.standings && !opts.results) return setMsg("exMsg", "Choose at least one thing to include.");
+  // open the print tab during the click, so pop-up blockers allow it
+  const win = print ? window.open("", "_blank") : null;
+  if (win) win.document.write(`<title>Preparing results…</title><p style="font:16px system-ui;padding:24px">Preparing the results…</p>`);
+  const btns = document.querySelectorAll(".ex-actions .btn"); btns.forEach(b => b.disabled = true);
+  setMsg("exMsg", "Preparing your PDF…", true);
+  try {
+    const { buildReport, reportFileName } = await import("./report.js");
+    const doc = await buildReport(reportData(c, $("exSport").value), opts);
+    if (win) { win.location.href = doc.output("bloburl"); setMsg("exMsg", "Opened in a new tab. Print it from there.", true); }
+    else { doc.save(reportFileName(c.name)); setMsg("exMsg", "Downloaded. Check your downloads folder.", true); }
+  } catch (e) { win?.close(); setMsg("exMsg", e.message || "Couldn't make the PDF. Try again."); }
+  btns.forEach(b => b.disabled = false);
 }
 
 /* ---------- notifications (results since you last looked) ---------- */
@@ -624,6 +728,7 @@ function render() {
   $("livePill").innerHTML = `<span class="live-pill${liveOn ? "" : " off"}" title="${liveOn ? "Scores update live" : "Reconnecting…"}"><span class="live-dot" aria-hidden="true"></span>${liveOn ? "Live" : "Offline"}</span>`;
   $("avatarBtn").innerHTML = `${avatar(me)}<span class="ab-text"><b>${esc((me?.full_name || "").split(" ")[0] || "Profile")}</b><small>${ROLE_LABEL[role]}</small></span>`;
   paintBell(c);
+  $("exportBtn").hidden = !(c && canScore());
   const [crumb, title] = pageHeading(c);
   $("crumb").textContent = crumb; $("pageTitle").textContent = title;
   document.title = `${title}${c ? " · " + c.name : ""}`;
@@ -644,6 +749,7 @@ function render() {
   if (entering) animateView();
   applySportFormat();
   if (view === "setup") previewPalette();
+  applyTheme();
   if (flashIds.length) { flashIds = []; setTimeout(() => document.querySelectorAll("tr.flash").forEach(t => t.classList.remove("flash")), 1200); }
 }
 
@@ -667,8 +773,21 @@ function applySportFormat() {
   $("matchOpts").hidden = p; $("placeOpts").hidden = !p; $("spDraw").disabled = !$("spDraws").checked;
 }
 
+// A titled panel header: title, optional one-line note, optional actions on the right.
+const panelHead = (title, sub = "", actions = "") => `<header class="panel-head"><div class="panel-title"><h2>${title}</h2>${sub ? `<p class="note">${sub}</p>` : ""}</div>${actions ? `<div class="panel-actions">${actions}</div>` : ""}</header>`;
+
+// The event's banner at the top of the dashboard, in its color shades.
+function heroHTML(c, feed = allResults(c)) {
+  const n = c.teams.length, unit = c.kind === "Intramurals" ? "college" : "team";
+  return `<section class="hero">
+    <div class="hero-mark${c.logo ? " has-logo" : ""}">${c.logo ? `<img src="${esc(c.logo)}" alt="">` : `<span>${esc(initialsOf(c.name))}</span>`}</div>
+    <div class="hero-text"><p class="hero-kind">${esc(c.kind || "Competition")}</p><h2>${esc(c.name)}</h2>
+      <p class="hero-meta"><span>${n} ${unit}${n === 1 ? "" : "s"}</span><span>${c.sports.length} sport${c.sports.length === 1 ? "" : "s"}</span><span>${feed.length ? `Updated ${timeAgo(feed[0].at)}` : "No results yet"}</span></p></div>
+  </section>`;
+}
+
 function overallView(c) {
-  if (!c.teams.length || !c.sports.length) return `<div class="panel empty-hero"><h2>Getting ready</h2><p class="note">${canSetup() ? `Add teams and sports in <button class="linkish" data-tab="setup" type="button">Setup</button> to start the leaderboard.` : "The organizers are still adding teams and sports."}</p></div>`;
+  if (!c.teams.length || !c.sports.length) return `<div class="dash">${heroHTML(c)}<div class="panel empty-hero"><h2>Getting ready</h2><p class="note">${canSetup() ? `Add teams and sports in <button class="linkish" data-tab="setup" type="button">Setup</button> to start the leaderboard.` : "The organizers are still adding teams and sports."}</p></div></div>`;
   const rows = overallTable(c); rows.forEach(r => r.podiumOk = r.pts > 0);
   const feed = allResults(c);
   // rank movement since the most recent result
@@ -677,7 +796,7 @@ function overallView(c) {
   const unitT = c.kind === "Intramurals" ? "College" : "Team";
   const cols = [
     { key: "pos", label: "#", cls: "pos" },
-    { key: "move", label: "", sortable: false, cls: "move", fmt: r => r.move > 0 ? `<span class="up" title="Up ${r.move} since the last result">▲${r.move}</span>` : r.move < 0 ? `<span class="down" title="Down ${-r.move} since the last result">▼${-r.move}</span>` : `<span class="same" title="No change">–</span>` },
+    { key: "move", label: "", sortable: false, cls: "move opt", fmt: r => r.move > 0 ? `<span class="up" title="Up ${r.move} since the last result">▲${r.move}</span>` : r.move < 0 ? `<span class="down" title="Down ${-r.move} since the last result">▼${-r.move}</span>` : `<span class="same" title="No change">–</span>` },
     { key: "name", label: unitT, cls: "team", fmt: teamCell },
     { key: "g", label: "Gold", fmt: r => medalCell(r.g, "g") },
     { key: "sv", label: "Silver", fmt: r => medalCell(r.sv, "s") },
@@ -688,67 +807,67 @@ function overallView(c) {
   const matches = c.sports.reduce((n, s) => n + s.matches.length, 0), events = c.sports.reduce((n, s) => n + s.events.length, 0);
   const done = c.sports.filter(hasResults).length;
   const medals = rows.reduce((n, r) => n + r.g + r.sv + r.b, 0);
+  const withMedal = rows.filter(r => r.g + r.sv + r.b > 0).length;
   const top = rows.filter(r => r.pts > 0).slice(0, 3);
 
-  // KPI cards
+  // key numbers
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - 6 + i); return d; });
   const perDay = days.map(d => feed.filter(r => { const t = new Date(r.at); return t >= d && t < new Date(d.getTime() + 864e5); }).length);
   const week = perDay.reduce((a, b) => a + b, 0);
   const kpis = `<div class="kpis">
     <div class="kpi" style="--i:0"><div class="kpi-top"><span>Results posted</span>${I.results}</div><b class="kpi-num" data-count="${feed.length}">${feed.length}</b>
       ${sparkline(perDay, days)}<p class="kpi-foot">${matches} match${matches === 1 ? "" : "es"} · ${events} event${events === 1 ? "" : "s"} · <b>${week}</b> this week</p></div>
-    <div class="kpi" style="--i:1"><div class="kpi-top"><span>Sports under way</span>${ico(TROPHY)}</div><b class="kpi-num"><span data-count="${done}">${done}</span><small>/${c.sports.length}</small></b>
+    <div class="kpi" style="--i:1"><div class="kpi-top"><span>Sports under way</span>${ico(TROPHY)}</div><b class="kpi-num"><span data-count="${done}">${done}</span><small> / ${c.sports.length}</small></b>
       <div class="meter" role="img" aria-label="${done} of ${c.sports.length} sports have results"><span style="width:${c.sports.length ? Math.round(done / c.sports.length * 100) : 0}%"></span></div>
       <p class="kpi-foot">${c.sports.length - done ? `${c.sports.length - done} still to start` : "Every sport has results"}</p></div>
     <div class="kpi" style="--i:2"><div class="kpi-top"><span>Medals awarded</span>${I.medal}</div><b class="kpi-num" data-count="${medals}">${medals}</b>
-      <p class="kpi-medals">${medalCell(rows.reduce((n, r) => n + r.g, 0), "g")} gold ${medalCell(rows.reduce((n, r) => n + r.sv, 0), "s")} silver ${medalCell(rows.reduce((n, r) => n + r.b, 0), "b")} bronze</p>
-      <p class="kpi-foot">Top 3 of each sport</p></div>
-    <div class="kpi accent" style="--i:3"><div class="kpi-top"><span>Leading ${unitT.toLowerCase()}</span>${I.star}</div>
-      <b class="kpi-lead">${top[0] ? `${dot(top[0].team)}${esc(top[0].name)}` : "No results yet"}</b>
-      <p class="kpi-foot">${top[0] ? `${num(top[0].pts)} pts${top[1] ? ` · ${top[0].pts === top[1].pts ? "tied" : `+${num(top[0].pts - top[1].pts)} ahead`}` : ""}` : `${c.teams.length} ${unitT.toLowerCase()}s competing`}</p></div>
+      <p class="kpi-medals">${medalCell(rows.reduce((n, r) => n + r.g, 0), "g")} gold ${medalCell(rows.reduce((n, r) => n + r.sv, 0), "s")} silver ${medalCell(rows.reduce((n, r) => n + r.b, 0), "b")} bronze</p></div>
+    <div class="kpi" style="--i:3"><div class="kpi-top"><span>${unitT}s competing</span>${I.teams}</div><b class="kpi-num" data-count="${c.teams.length}">${c.teams.length}</b>
+      <p class="kpi-foot"><b>${withMedal}</b> with a medal so far</p></div>
   </div>`;
 
   // podium: 2nd, 1st, 3rd
   const lead = top.length > 1 ? top[0].pts - top[1].pts : 0;
   const step = (r, place) => !r ? `<div class="step p${place} empty"></div>` : `
     <button class="step p${place}" type="button" data-tab="team:${r.id}">
-      <span class="step-mark${r.team.logo ? " has-logo" : ""}">${r.team.logo ? `<img src="${esc(r.team.logo)}" alt="">` : `<span class="step-dot" style="background:${esc(r.team.color)}"></span>`}</span>
+      <span class="step-mark">${r.team.logo ? `<img src="${esc(r.team.logo)}" alt="">` : `<span class="step-dot" style="background:${esc(r.team.color)}"></span>`}</span>
       <span class="step-name">${esc(r.name)}</span>
       <span class="step-pts"><span data-count="${r.pts}">${num(r.pts)}</span> pts</span>
       <span class="step-block"><span>${place}</span></span>
     </button>`;
-  const podium = top.length ? `<section class="podium-wrap panel">
-      <div class="podium-head"><div><p class="eyebrow">Leading now</p><h2 class="leader-name">${esc(top[0].name)}</h2>
-        <p class="note">${top.length < 2 ? "First on the board." : lead === 0 ? "Tied for first place." : `Ahead by ${num(lead)} pt${lead === 1 ? "" : "s"}.`} ${top[0].g} gold, ${top[0].sv} silver, ${top[0].b} bronze.</p></div>
-        <p class="note">Updated ${timeAgo(feed[0]?.at)}</p></div>
-      <div class="podium-stage">${step(top[1], 2)}${step(top[0], 1)}${step(top[2], 3)}</div>
-    </section>` : `<section class="panel podium-wrap"><p class="eyebrow">Leading now</p><h2>No results yet</h2><p class="note">The podium fills in as soon as the first scores are in.</p></section>`;
+  const podiumNote = !top.length ? "No results yet" : top.length < 2 ? "First on the board" : lead === 0 ? "Tied for first place" : `${esc(top[0].name)} leads by ${num(lead)} pt${lead === 1 ? "" : "s"}`;
+  const podium = `<section class="panel podium-wrap">${panelHead("Top 3", podiumNote)}
+    ${top.length ? `<div class="podium-stage">${step(top[1], 2)}${step(top[0], 1)}${step(top[2], 3)}</div>` : `<p class="empty">The podium fills in as soon as the first scores are in.</p>`}</section>`;
 
-  // points race: one bar per team, in its own color, labelled with name and points
+  const standings = `<section class="panel">${panelHead("Overall standings", `Top 3 in each sport earn gold, silver and bronze · ${c.medalPts.map((p, i) => `${ordinal(i + 1)} ${num(p)}`).join(", ")} pts`, exportBtn("all"))}
+    ${tableHTML("overall", cols, rows)}<div class="foot"><span>▲▼ movement since the latest result</span><span>Select a ${unitT.toLowerCase()} for its full record</span></div></section>`;
+
+  // points race: one bar per team, in its own color
   const maxPts = Math.max(1, ...rows.map(r => r.pts));
-  const race = `<section class="panel race"><div class="sec-head"><h2>Points race</h2><span class="note">Overall points</span></div>
+  const race = `<section class="panel race">${panelHead("Points race", "Overall points")}
     <div class="race-rows">${rows.slice(0, 8).map((r, i) => `<button class="race-row" type="button" data-tab="team:${r.id}" style="--i:${i}" title="${esc(r.name)}: ${num(r.pts)} pts, ${r.g} gold, ${r.sv} silver, ${r.b} bronze">
       <span class="race-name">${dot(r.team)}${esc(r.name)}</span>
       <span class="race-track"><span class="race-bar" style="width:${Math.max(r.pts ? 2 : 0, r.pts / maxPts * 100)}%;background:${esc(r.team.color)}"></span></span>
       <b class="race-pts">${num(r.pts)}</b></button>`).join("")}</div>
     ${rows.length > 8 ? `<button class="linkish" type="button" data-tab="teams">See all ${rows.length}</button>` : ""}</section>`;
 
-  const feedHTML = feed.length ? feed.slice(0, 7).map(r => `<li>${resultLine(c, r)}<span class="feed-meta">${esc(r.sport.name)} · ${timeAgo(r.at)}</span></li>`).join("") : `<li class="empty">Results will appear here as they come in.</li>`;
+  const feedHTML = feed.length ? feed.slice(0, 6).map(r => `<li>${resultLine(c, r)}<span class="feed-meta">${esc(r.sport.name)} · ${timeAgo(r.at)}</span></li>`).join("") : `<li class="empty">Results will appear here as they come in.</li>`;
+  const latest = `<section class="panel">${panelHead("Latest results", "", `<button class="linkish" type="button" data-tab="results">See all</button>`)}<ul class="list feed">${feedHTML}</ul></section>`;
+
   const cards = c.sports.map(s => {
     const t = sportTable(c, s).filter(r => r.active);
     const n = s.format === "placing" ? s.events.length : s.matches.length;
     const leadT = t[0] ? `${dot(t[0].team)}${esc(t[0].name)}` : "No results yet";
-    return `<button class="card" type="button" data-tab="${s.id}"><span class="card-ico">${sportIcon(s)}</span><span class="k">${esc(s.name)}</span><span class="v">${leadT}</span><span class="sub">${n} ${s.format === "placing" ? (n === 1 ? "event" : "events") : (n === 1 ? "match" : "matches")} · ${s.format === "placing" ? "placings" : "head-to-head"}</span></button>`;
+    return `<button class="card" type="button" data-tab="${s.id}"><span class="card-ico">${sportIcon(s)}</span><span class="k">${esc(s.name)}</span><span class="v">${leadT}</span><span class="sub">${n} ${s.format === "placing" ? (n === 1 ? "event" : "events") : (n === 1 ? "match" : "matches")}</span></button>`;
   }).join("");
-  return `<div class="home">
+  const sportsPanel = `<section class="panel">${panelHead("Sports", `Select a sport for its table${canScore() ? " and to enter results" : ""}`)}<div class="cards">${cards}</div></section>`;
+
+  return `<div class="dash">
+    ${heroHTML(c, feed)}
     ${kpis}
-    <div class="dash-row">${podium}${race}</div>
-    <div class="home-grid">
-      <section><div class="sec-head"><h2>Overall standings</h2><p class="note">Each sport's top 3 earn gold, silver, bronze. Points ${c.medalPts.map((p, i) => `${ordinal(i + 1)} ${num(p)}`).join(", ")}.</p></div>
-        <div class="panel">${tableHTML("overall", cols, rows)}<div class="foot"><span>▲▼ shows movement since the latest result. Tap a ${unitT.toLowerCase()} for its full record.</span></div></div></section>
-      <aside><div class="sec-head"><h2>Latest results</h2><button class="linkish" type="button" data-tab="results">See all</button></div><div class="panel"><ul class="list feed">${feedHTML}</ul></div></aside>
-    </div>
-    <section><div class="sec-head"><h2>Sports</h2><p class="note">Pick a sport to see its table${canScore() ? " and enter results" : ""}.</p></div><div class="cards">${cards}</div></section>
+    <div class="dash-row">${standings}${podium}</div>
+    <div class="dash-row even">${race}${latest}</div>
+    ${sportsPanel}
   </div>`;
 }
 
@@ -781,14 +900,11 @@ function resultsView(c) {
   const all = allResults(c), list = resultsFilter === "all" ? all : all.filter(r => r.sport.id === resultsFilter);
   const chips = `<div class="chips filter-chips"><button class="chip" type="button" data-rfilter="all" aria-pressed="${resultsFilter === "all"}">All sports <small>${all.length}</small></button>${c.sports.map(s => { const n = all.filter(r => r.sport.id === s.id).length; return `<button class="chip" type="button" data-rfilter="${s.id}" aria-pressed="${resultsFilter === s.id}">${esc(s.name)} <small>${n}</small></button>`; }).join("")}</div>`;
   const dayOf = r => new Date(r.at).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-  let out = "", last = "";
-  for (const r of list) {
-    const d = dayOf(r);
-    if (d !== last) { out += `${last ? "</ul></section>" : ""}<section class="day"><h3 class="day-head">${esc(d)}</h3><ul class="list feed panel">`; last = d; }
-    out += `<li>${resultLine(c, r)}<span class="feed-meta">${esc(r.sport.name)} · ${new Date(r.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}${canScore() && r.by ? ` · entered by ${esc(personName(r.by))}` : ""}</span></li>`;
-  }
-  if (last) out += "</ul></section>";
-  return `<div class="results-page">${chips}${out || `<div class="panel"><p class="empty">No results yet.</p></div>`}</div>`;
+  const days = [];
+  for (const r of list) { const d = dayOf(r); if (days.at(-1)?.d !== d) days.push({ d, items: [] }); days.at(-1).items.push(r); }
+  const out = days.map(({ d, items }) => `<section class="panel day">${panelHead(esc(d), "", `<span class="note">${items.length} result${items.length === 1 ? "" : "s"}</span>`)}<ul class="list feed">${items.map(r =>
+    `<li>${resultLine(c, r)}<span class="feed-meta">${esc(r.sport.name)} · ${new Date(r.at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}${canScore() && r.by ? ` · entered by ${esc(personName(r.by))}` : ""}</span></li>`).join("")}</ul></section>`).join("");
+  return `<div class="page"><div class="panel toolbar">${chips}${exportBtn(resultsFilter)}</div>${out || `<div class="panel"><p class="empty">No results yet.</p></div>`}</div>`;
 }
 
 function profileView() {
@@ -806,20 +922,24 @@ function profileView() {
       ${msgHTML("avatarMsg")}
     </section>
     <div class="profile-grid">
-      <form id="profileForm" class="panel" novalidate>
-        <h2>Personal details</h2>
-        <label for="pfName">Full name<input id="pfName" type="text" autocomplete="name" maxlength="80" value="${esc(p.full_name || "")}"></label>
-        <label for="pfCollege">College or department<input id="pfCollege" type="text" maxlength="80" placeholder="e.g. College of Engineering" value="${esc(p.college || "")}"></label>
-        <fieldset class="types"><legend>I am a</legend>
-          ${MEMBER_INFO.map(([k, label, desc, icon]) => `<label class="type-card" for="pfType-${k}"><input type="radio" name="pfType" id="pfType-${k}" value="${k}"${k === type ? " checked" : ""}><span class="tc-ico">${icon}</span><b>${label}</b><span class="note">${desc}</span></label>`).join("")}
-        </fieldset>
-        <button class="btn" type="submit">Save profile</button>${msgHTML("profileMsg")}
-      </form>
+      <section class="panel">${panelHead("Personal details", "How you appear to organizers")}
+        <form id="profileForm" novalidate>
+          <label for="pfName">Full name<input id="pfName" type="text" autocomplete="name" maxlength="80" value="${esc(p.full_name || "")}"></label>
+          <label for="pfCollege">College or department<input id="pfCollege" type="text" maxlength="80" placeholder="e.g. College of Engineering" value="${esc(p.college || "")}"></label>
+          <fieldset class="types"><legend>I am a</legend>
+            ${MEMBER_INFO.map(([k, label, desc, icon]) => `<label class="type-card" for="pfType-${k}"><input type="radio" name="pfType" id="pfType-${k}" value="${k}"${k === type ? " checked" : ""}><span class="tc-ico">${icon}</span><b>${label}</b><span class="note">${desc}</span></label>`).join("")}
+          </fieldset>
+          <div><button class="btn" type="submit">Save profile</button></div>${msgHTML("profileMsg")}
+        </form>
+      </section>
       <div class="profile-side">
-        <section class="panel side-card"><h2>Access</h2><p><span class="badge ${role}">${ROLE_LABEL[role]}</span></p><p class="note">${access} Access is set by an admin${role === "admin" ? " in People" : ""}.</p></section>
-        <form id="passForm" class="panel side-card" novalidate><h2>Change password</h2>
-          <label for="pfPass">New password<input id="pfPass" type="password" autocomplete="new-password" minlength="8"></label>
-          <button class="btn ghost" type="submit">Update password</button>${msgHTML("passMsg")}</form>
+        <section class="panel">${panelHead("Appearance", "Applies on this device")}
+          <div class="panel-body"><div class="seg" role="group" aria-label="Appearance">${[["light", "Light", I.sun], ["dark", "Dark", I.moon], ["system", "Device", I.monitor]].map(([k, l, ic]) => `<button type="button" class="seg-btn" data-theme-set="${k}" aria-pressed="${themePref === k}">${ic}<span>${l}</span></button>`).join("")}</div>
+          <p class="note">Device follows your phone or computer's light or dark setting.</p></div></section>
+        <section class="panel">${panelHead("Access")}<div class="panel-body"><p><span class="badge ${role}">${ROLE_LABEL[role]}</span></p><p class="note">${access} Access is set by an admin${role === "admin" ? " in People" : ""}.</p></div></section>
+        <section class="panel">${panelHead("Change password")}
+          <form id="passForm" novalidate><label for="pfPass">New password<input id="pfPass" type="password" autocomplete="new-password" minlength="8"></label>
+          <div><button class="btn ghost" type="submit">Update password</button></div>${msgHTML("passMsg")}</form></section>
         <button class="btn ghost" type="button" data-signout>${I.logout} Log out</button>
       </div>
     </div>
@@ -862,24 +982,24 @@ function teamView(c, id) {
     const res = mineS > theirs ? "W" : mineS < theirs ? "L" : "D";
     return `<li><span class="feed-main"><span class="form"><span class="${res}">${res}</span></span> ${num(mineS)}–${num(theirs)} vs ${opp ? `${dot(opp)}${esc(opp.name)}` : "?"}</span><span class="feed-meta">${esc(r.sport.name)} · ${timeAgo(r.at)}</span></li>`;
   }).join("") : `<li class="empty">No results yet.</li>`;
-  return `<div class="home">
-    <button class="linkish" type="button" data-tab="overall">← Back to overall</button>
-    <section class="panel team-hero">
-      <span class="team-hero-mark${t.logo ? " has-logo" : ""}">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : `<span class="step-dot" style="background:${esc(t.color)}"></span>`}</span>
+  return `<div class="page">
+    <button class="linkish back-link" type="button" data-tab="teams">← All ${label}s</button>
+    <section class="panel team-hero" style="--tc:${esc(t.color)}">
+      <span class="team-hero-mark">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : `<span class="step-dot" style="background:${esc(t.color)}"></span>`}</span>
       <div><p class="eyebrow">${me ? `${ordinal(me.pos)} overall` : ""}</p><h2 class="leader-name">${esc(t.name)}</h2>
         <p class="team-medals">${medalCell(me?.g || 0, "g")} gold ${medalCell(me?.sv || 0, "s")} silver ${medalCell(me?.b || 0, "b")} bronze</p></div>
-      <div class="leader-pts"><b data-count="${me?.pts || 0}">${num(me?.pts || 0)}</b><span>pts</span></div>
+      <div class="leader-pts"><b data-count="${me?.pts || 0}">${num(me?.pts || 0)}</b><span>points</span></div>
     </section>
-    <div class="home-grid">
-      <section><div class="sec-head"><h2>By sport</h2><span class="note">This ${label}'s place in each sport</span></div>
-        <div class="panel"><div class="table-scroll"><table><thead><tr><th class="team">Sport</th><th>Place</th><th class="team">Record</th><th>Pts</th></tr></thead><tbody>${sportsRows}</tbody></table></div></div></section>
-      <aside><div class="sec-head"><h2>Recent results</h2></div><div class="panel"><ul class="list feed">${list}</ul></div></aside>
+    <div class="layout even">
+      <section class="panel">${panelHead("By sport", `This ${label}'s place in each sport`)}
+        <div class="table-scroll"><table><thead><tr><th class="team">Sport</th><th>Place</th><th class="team">Record</th><th>Pts</th></tr></thead><tbody>${sportsRows}</tbody></table></div></section>
+      <section class="panel">${panelHead("Recent results")}<ul class="list feed">${list}</ul></section>
     </div>
   </div>`;
 }
 
 const teamOptions = (c, sel, blank) => (blank ? `<option value="">${blank}</option>` : "") + c.teams.map(t => `<option value="${t.id}"${t.id === sel ? " selected" : ""}>${esc(t.name)}</option>`).join("");
-const noTeams = `<div class="panel"><p class="empty">Add at least two teams in Setup first.</p></div>`;
+const noTeams = `<p class="empty">Add at least two teams in Setup first.</p>`;
 
 function matchView(c, s) {
   const rows = matchTable(c, s); rows.forEach(r => r.podiumOk = r.active);
@@ -904,19 +1024,18 @@ function matchView(c, s) {
     return `<li class="match"><span class="h" title="${esc(H.name)}">${esc(H.name)}</span><span class="sc">${num(m.hs)}–${num(m.as)}</span><span class="a" title="${esc(A.name)}">${esc(A.name)}</span>${del}${by}</li>`;
   }).join("") : `<li class="empty">No matches yet.${canScore() ? " Add the first result above." : ""}</li>`;
   const scoring = `Win ${num(s.win)}${s.draws ? `, draw ${num(s.draw)}` : ""}, loss ${num(s.loss)} pts`;
-  const form = !canScore() ? "" : `<section><div class="sec-head"><h2>Add a result</h2></div>
-    ${c.teams.length < 2 ? noTeams : `<form class="panel" id="matchForm" data-sport="${s.id}" novalidate>
+  const form = !canScore() ? "" : `<section class="panel">${panelHead("Add a result")}
+    ${c.teams.length < 2 ? noTeams : `<form id="matchForm" data-sport="${s.id}" novalidate>
       <div class="score-row"><label for="mHome">Home<select id="mHome">${teamOptions(c, c.teams[0]?.id)}</select></label><label for="mHs">${esc(u)}<input class="score" id="mHs" type="number" min="0" step="any" value="0" inputmode="decimal"></label></div>
       <div class="vs">VS</div>
       <div class="score-row"><label for="mAway">Away<select id="mAway">${teamOptions(c, c.teams[1]?.id)}</select></label><label for="mAs">${esc(u)}<input class="score" id="mAs" type="number" min="0" step="any" value="0" inputmode="decimal"></label></div>
       <button class="btn" type="submit">Save result</button>${msgHTML("matchMsg")}
     </form>`}</section>`;
   return `<div class="layout">
-    <section><div class="sec-head"><h2>${esc(s.name)} standings</h2><p class="note">${scoring}. Click a column to sort.</p></div>
-      <div class="panel">${tableHTML(s.id, cols, rows)}
-      <div class="foot"><span>Ties broken by ${esc(u.toLowerCase())} difference, then ${esc(u.toLowerCase())} scored.</span>${s.draws ? "" : "<span>No draws in this sport.</span>"}</div></div></section>
+    <section class="panel">${panelHead("Standings", `Head-to-head · ${scoring}`, exportBtn(s.id))}${tableHTML(s.id, cols, rows)}
+      <div class="foot"><span>Ties broken by ${esc(u.toLowerCase())} difference, then ${esc(u.toLowerCase())} scored</span>${s.draws ? "" : "<span>No draws in this sport</span>"}<span>Select a column to sort</span></div></section>
     <aside>${form}
-      <section><div class="sec-head"><h2>Results</h2><span class="note">Latest first</span></div><div class="panel"><ul class="list scroll">${list}</ul></div></section>
+      <section class="panel">${panelHead("Results", "Latest first")}<ul class="list scroll">${list}</ul></section>
     </aside></div>`;
 }
 
@@ -939,17 +1058,17 @@ function placingView(c, s) {
     const by = canScore() && ev.by ? `<div class="sub">Entered by ${esc(personName(ev.by))}</div>` : "";
     return `<li><div class="grow"><div><b>${esc(ev.name)}</b></div><div class="sub">${podium}</div>${by}</div>${del}</li>`;
   }).join("") : `<li class="empty">No events yet.${canScore() ? " Add the first placings above." : ""}</li>`;
-  const form = !canScore() ? "" : `<section><div class="sec-head"><h2>Add an event</h2></div>
-    ${c.teams.length < 2 ? noTeams : `<form class="panel" id="placingForm" data-sport="${s.id}" novalidate>
+  const form = !canScore() ? "" : `<section class="panel">${panelHead("Add an event")}
+    ${c.teams.length < 2 ? noTeams : `<form id="placingForm" data-sport="${s.id}" novalidate>
       <label for="evName">Event<input id="evName" type="text" maxlength="60" placeholder="e.g. Women's 200 m"></label>
       <div class="places">${selects}</div>
       <button class="btn" type="submit">Save placings</button>${msgHTML("placingMsg")}
     </form>`}</section>`;
   return `<div class="layout">
-    <section><div class="sec-head"><h2>${esc(s.name)} standings</h2><p class="note">Points per place: ${s.places.map(num).join(", ")}. Click a column to sort.</p></div>
-      <div class="panel">${tableHTML(s.id, cols, rows)}<div class="foot"><span>Ties broken by most 1st places, then 2nd, then 3rd.</span></div></div></section>
+    <section class="panel">${panelHead("Standings", `Placings · points per place ${s.places.map(num).join(", ")}`, exportBtn(s.id))}${tableHTML(s.id, cols, rows)}
+      <div class="foot"><span>Ties broken by most 1st places, then 2nd, then 3rd</span><span>Select a column to sort</span></div></section>
     <aside>${form}
-      <section><div class="sec-head"><h2>Events</h2><span class="note">Latest first</span></div><div class="panel"><ul class="list scroll">${list}</ul></div></section>
+      <section class="panel">${panelHead("Events", "Latest first")}<ul class="list scroll">${list}</ul></section>
     </aside></div>`;
 }
 
@@ -958,70 +1077,76 @@ function setupView(c) {
     <label class="chip upload" tabindex="0" title="Upload a logo for ${esc(t.name)}">${t.logo ? "Change logo" : "Add logo"}<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" data-upload="team" data-team="${t.id}" hidden></label>
     ${t.logo ? `<button class="x" type="button" data-confirm data-clear-img="team" data-team="${t.id}" aria-label="Remove logo for ${esc(t.name)}" title="Remove logo">⌫</button>` : ""}
     <button class="x" type="button" data-confirm data-del-team="${t.id}" aria-label="Remove ${esc(t.name)}">×</button></li>`).join("") : `<li class="empty">No teams yet.</li>`;
-  const sportsList = c.sports.length ? c.sports.map(s => `<li><div class="grow"><div><b>${esc(s.name)}</b></div><div class="sub">${s.format === "placing" ? `Placings · ${s.places.map(num).join("/")} pts` : `Head-to-head · ${esc(s.unit)} · W${num(s.win)}${s.draws ? ` D${num(s.draw)}` : ""} L${num(s.loss)}`}</div></div><button class="x" type="button" data-confirm data-del-sport="${s.id}" aria-label="Remove ${esc(s.name)}">×</button></li>`).join("") : `<li class="empty">No sports yet.</li>`;
-  const presetChips = Object.keys(PRESETS).filter(n => !c.sports.some(s => s.name.toLowerCase() === n.toLowerCase())).map(n => `<button class="chip" type="button" data-preset="${esc(n)}">${esc(n)}</button>`).join("");
+  const sportsList = c.sports.length ? c.sports.map(s => `<li><span class="card-ico" aria-hidden="true">${sportIcon(s)}</span><div class="grow"><div><b>${esc(s.name)}</b></div><div class="sub">${s.format === "placing" ? `Placings · ${s.places.map(num).join("/")} pts` : `Head-to-head · ${esc(s.unit)} · W${num(s.win)}${s.draws ? ` D${num(s.draw)}` : ""} L${num(s.loss)}`}</div></div><button class="x" type="button" data-confirm data-del-sport="${s.id}" aria-label="Remove ${esc(s.name)}">×</button></li>`).join("") : `<li class="empty">No sports yet.</li>`;
+  const presetChips = Object.keys(PRESETS).filter(n => !c.sports.some(s => s.name.toLowerCase() === n.toLowerCase())).map(n => `<button class="chip" type="button" data-preset="${esc(n)}">+ ${esc(n)}</button>`).join("");
+  const unitPl = c.kind === "Intramurals" ? "Colleges" : "Teams";
   return `<div class="setup-grid">
-    <section><h2>Teams</h2><p class="note">Colleges, departments, dorms, clubs: anyone who competes.</p>
-      <div class="panel"><ul class="list">${teamsList}</ul>
-      <form id="teamForm" novalidate style="border-top:1px solid var(--line)"><div class="inline"><input id="teamName" type="text" maxlength="60" placeholder="Team or college name" aria-label="Team or college name"><button class="btn" type="submit">Add</button></div>${msgHTML("teamMsg")}</form></div>
-    </section>
-    <section><h2>Sports</h2><p class="note">Removing a sport or team also removes its results.</p>
-      <div class="panel"><ul class="list">${sportsList}</ul></div>
-      <form id="sportForm" class="panel" novalidate>
-        ${presetChips ? `<div><p class="note" style="margin-bottom:6px">Quick add</p><div class="chips">${presetChips}</div></div>` : ""}
-        <label for="spName">Sport name<input id="spName" type="text" maxlength="40" placeholder="e.g. Sepak Takraw"></label>
-        <label for="spFormat">How it's scored<select id="spFormat"><option value="match">Head-to-head matches (team vs team)</option><option value="placing">Placings (1st, 2nd, 3rd in an event)</option></select></label>
-        <div id="matchOpts" style="display:grid;gap:10px">
-          <label for="spUnit">Score unit<input id="spUnit" type="text" maxlength="16" value="Points"></label>
-          <label class="check" for="spDraws"><input id="spDraws" type="checkbox" checked>Draws allowed</label>
-          <div class="row3"><label for="spWin">Win pts<input id="spWin" type="number" step="any" value="3"></label><label for="spDraw">Draw pts<input id="spDraw" type="number" step="any" value="1"></label><label for="spLoss">Loss pts<input id="spLoss" type="number" step="any" value="0"></label></div>
-        </div>
-        <label for="spPlaces" id="placeOpts" hidden>Points per place<input id="spPlaces" type="text" value="10, 8, 6, 5, 4, 3" inputmode="decimal"></label>
-        <button class="btn" type="submit">Add sport</button>${msgHTML("sportMsg")}
-      </form>
-    </section>
-    <section><h2>Branding</h2><p class="note">Logos show in the header and next to team names. The background fills the page behind the standings.</p>
-      <div class="panel brand-panel">
+    <div class="setup-col">
+      <section class="panel">${panelHead("Competition", "Name, type, scoring and color theme")}
+        <form id="compForm" novalidate>
+          <label for="cName">Name<input id="cName" type="text" maxlength="80" value="${esc(c.name)}"></label>
+          <div class="row2">
+            <label for="cKind">Type<select id="cKind">${["Intramurals", "League", "Tournament", "Campus event"].map(k => `<option${k === c.kind ? " selected" : ""}>${k}</option>`).join("")}</select></label>
+            <label for="cMedal">Overall points for 1st, 2nd, 3rd…<input id="cMedal" type="text" value="${c.medalPts.map(num).join(", ")}" inputmode="decimal"></label>
+          </div>
+          ${paletteHTML(c)}
+          <label class="check" for="cLive"><input id="cLive" type="checkbox"${c.live ? " checked" : ""}>Show live standings on the main login page</label>
+          <div><button class="btn" type="submit">Save changes</button></div>${msgHTML("compMsg")}
+        </form>
+      </section>
+      <section class="panel">${panelHead(`${unitPl} (${c.teams.length})`, "Colleges, departments, dorms, clubs: anyone who competes")}
+        <ul class="list">${teamsList}</ul>
+        <form id="teamForm" class="panel-foot" novalidate><div class="inline"><input id="teamName" type="text" maxlength="60" placeholder="Team or college name" aria-label="Team or college name"><button class="btn" type="submit">Add</button></div>${msgHTML("teamMsg")}</form>
+      </section>
+    </div>
+    <div class="setup-col">
+      <section class="panel brand-panel">${panelHead("Branding", "Shown in the menu, the dashboard banner and the printed results")}
         <div class="brand-row"><div class="thumb logo-thumb${c.logo ? " filled" : ""}">${c.logo ? `<img src="${esc(c.logo)}" alt="Event logo">` : "<span>No logo</span>"}</div>
           <div class="grow"><b>Event or school logo</b><div class="note">PNG, JPG, WebP or SVG. Square works best.</div>
-          <div class="inline"><label class="btn ghost upload" tabindex="0">${c.logo ? "Change" : "Upload"}<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" data-upload="logo" hidden></label>${c.logo ? `<button class="btn ghost danger" type="button" data-confirm data-clear-img="logo">Remove</button>` : ""}</div></div></div>
+          <div class="inline"><label class="btn ghost small upload" tabindex="0">${c.logo ? "Change" : "Upload"}<input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" data-upload="logo" hidden></label>${c.logo ? `<button class="btn ghost small danger" type="button" data-confirm data-clear-img="logo">Remove</button>` : ""}</div></div></div>
         <div class="brand-row"><div class="thumb bg-thumb${c.background ? " filled" : ""}">${c.background ? `<img src="${esc(c.background)}" alt="Page background">` : "<span>No background</span>"}</div>
           <div class="grow"><b>Page background</b><div class="note">A wide photo, like your gym, field or campus.</div>
-          <div class="inline"><label class="btn ghost upload" tabindex="0">${c.background ? "Change" : "Upload"}<input type="file" accept="image/png,image/jpeg,image/webp" data-upload="background" hidden></label>${c.background ? `<button class="btn ghost danger" type="button" data-confirm data-clear-img="background">Remove</button>` : ""}</div></div></div>
+          <div class="inline"><label class="btn ghost small upload" tabindex="0">${c.background ? "Change" : "Upload"}<input type="file" accept="image/png,image/jpeg,image/webp" data-upload="background" hidden></label>${c.background ? `<button class="btn ghost small danger" type="button" data-confirm data-clear-img="background">Remove</button>` : ""}</div></div></div>
         ${msgHTML("brandMsg")}
-      </div>
-    </section>
-    <section><h2>Competition</h2>
-      <form id="compForm" class="panel" novalidate>
-        <label for="cName">Name<input id="cName" type="text" maxlength="80" value="${esc(c.name)}"></label>
-        <label for="cKind">Type<select id="cKind">${["Intramurals", "League", "Tournament", "Campus event"].map(k => `<option${k === c.kind ? " selected" : ""}>${k}</option>`).join("")}</select></label>
-        <label for="cMedal">Overall points for 1st, 2nd, 3rd…<input id="cMedal" type="text" value="${c.medalPts.map(num).join(", ")}" inputmode="decimal"></label>
-        ${paletteHTML(c)}
-        <label class="check" for="cLive"><input id="cLive" type="checkbox"${c.live ? " checked" : ""}>Show live standings on the main login page</label>
-        <button class="btn" type="submit">Save changes</button>${msgHTML("compMsg")}
-      </form>
-      <div class="panel link-panel"><b>Login link</b>
-        <p class="note">Share this with the students and coordinators of ${esc(c.name)}. It opens a login page in this competition's colors, and after logging in they only see this competition.</p>
-        <div class="inline"><input type="text" readonly value="${esc(compLink(c.id))}" aria-label="Login link" data-no-restore onclick="this.select()"><button class="btn" type="button" data-copy-link="${c.id}">Copy</button></div>
-      </div>
-      <div class="inline"><button class="btn ghost danger" type="button" data-confirm data-del-comp="${c.id}">Delete this competition</button></div>
-    </section>
+      </section>
+      <section class="panel">${panelHead(`Sports (${c.sports.length})`, "Removing a sport or team also removes its results")}
+        <ul class="list">${sportsList}</ul>
+        <form id="sportForm" class="panel-foot" novalidate>
+          ${presetChips ? `<div class="chips">${presetChips}</div>` : ""}
+          <label for="spName">Sport name<input id="spName" type="text" maxlength="40" placeholder="e.g. Sepak Takraw"></label>
+          <label for="spFormat">How it's scored<select id="spFormat"><option value="match">Head-to-head matches (team vs team)</option><option value="placing">Placings (1st, 2nd, 3rd in an event)</option></select></label>
+          <div id="matchOpts" style="display:grid;gap:12px">
+            <label for="spUnit">Score unit<input id="spUnit" type="text" maxlength="16" value="Points"></label>
+            <label class="check" for="spDraws"><input id="spDraws" type="checkbox" checked>Draws allowed</label>
+            <div class="row3"><label for="spWin">Win pts<input id="spWin" type="number" step="any" value="3"></label><label for="spDraw">Draw pts<input id="spDraw" type="number" step="any" value="1"></label><label for="spLoss">Loss pts<input id="spLoss" type="number" step="any" value="0"></label></div>
+          </div>
+          <label for="spPlaces" id="placeOpts" hidden>Points per place<input id="spPlaces" type="text" value="10, 8, 6, 5, 4, 3" inputmode="decimal"></label>
+          <div><button class="btn" type="submit">Add sport</button></div>${msgHTML("sportMsg")}
+        </form>
+      </section>
+      <section class="panel">${panelHead("Login link", `Share with the students and coordinators of ${esc(c.name)}`)}
+        <div class="panel-body"><p class="note">It opens a login page in this competition's colors, and after logging in they only see this competition.</p>
+        <div class="inline"><input type="text" readonly value="${esc(compLink(c.id))}" aria-label="Login link" data-no-restore onclick="this.select()"><button class="btn" type="button" data-copy-link="${c.id}">Copy</button></div></div>
+      </section>
+      <section class="panel danger-zone">${panelHead("Delete competition", "Removes every team, sport and result in it. This can't be undone.")}
+        <div class="panel-body"><div><button class="btn ghost danger" type="button" data-confirm data-del-comp="${c.id}">Delete this competition</button></div></div>
+      </section>
+    </div>
   </div>`;
 }
 
 function peopleView() {
   const q = (msgs.peopleFilter?.text || "").toLowerCase();
   const shown = people.filter(p => !q || [p.full_name, p.email, p.college, MEMBER[p.member_type]].some(x => (x || "").toLowerCase().includes(q)));
-  const counts = ["admin", "coordinator", "student"].map(r => `<span><b>${people.filter(p => p.role === r).length}</b> ${ROLE_LABEL[r].toLowerCase()}${people.filter(p => p.role === r).length === 1 ? "" : "s"}</span>`).join("");
+  const counts = ["admin", "coordinator", "student"].map(r => { const n = people.filter(p => p.role === r).length; return `${n} ${ROLE_LABEL[r].toLowerCase()}${n === 1 ? "" : "s"}`; }).join(" · ");
   const rows = shown.map(p => `<tr><td><div class="person">${avatar(p)}<div><b>${esc(p.full_name || "No name")}</b><div class="sub note">${esc(p.email)}</div></div></div></td><td class="opt">${MEMBER[p.member_type] ? `<span class="tag">${MEMBER[p.member_type]}</span>` : ""}</td><td class="opt">${esc(p.college)}</td>
     <td><select data-role-for="${p.id}" aria-label="Role for ${esc(p.full_name || p.email)}">${["student", "coordinator", "admin"].map(r => `<option value="${r}"${p.role === r ? " selected" : ""}>${ROLE_LABEL[r]}</option>`).join("")}</select></td></tr>`).join("")
     || `<tr><td colspan="4" class="empty">No one matches that search.</td></tr>`;
-  return `<section style="display:grid;gap:10px">
-    <div class="sec-head"><h2>People</h2><div class="meta">${counts}</div></div>
-    <p class="note">Everyone who signs up starts as a viewer, who can follow standings. Make sports coordinators here so they can enter scores. "I am a" is what people chose for themselves.</p>
+  return `<section class="panel">${panelHead(`People (${people.length})`, counts)}
+    <div class="panel-body"><p class="note">Everyone who signs up starts as a viewer, who can follow standings. Make sports coordinators here so they can enter scores. "I am a" is what people chose for themselves.</p>
     <input id="peopleSearch" type="search" placeholder="Search by name, email or college" aria-label="Search people" value="${esc(msgs.peopleFilter?.text || "")}">
-    ${msgHTML("peopleMsg")}
-    <div class="panel"><div class="table-scroll"><table class="people"><thead><tr><th class="team">Person</th><th class="team opt">I am a</th><th class="team opt">College</th><th class="team">Access</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+    ${msgHTML("peopleMsg")}</div>
+    <div class="table-scroll"><table class="people"><thead><tr><th class="team">Person</th><th class="team opt">I am a</th><th class="team opt">College</th><th class="team">Access</th></tr></thead><tbody>${rows}</tbody></table></div>
   </section>`;
 }
 
@@ -1148,6 +1273,10 @@ document.addEventListener("click", async e => {
     return;
   }
   if (t.closest("[data-close-nav]")) return document.body.classList.remove("nav-open");
+  const ex = t.closest("[data-export]");
+  if (ex) return openExport(ex.dataset.export || (comp()?.sports.some(s => s.id === view) ? view : "all"));
+  if (t.closest("[data-export-print]")) return makeReport(true);
+  if (t.closest("[data-close-modal]") && (t.matches(".modal-wrap") || t.closest("button[data-close-modal]"))) return closeModal();
   if (t.closest("[data-open-search]")) { document.body.classList.add("searching"); return $("globalSearch")?.focus(); }
   if (t.closest("[data-bell]")) {
     const c = comp(), panel = $("notifPanel"); if (!c || !panel) return;
@@ -1156,8 +1285,11 @@ document.addEventListener("click", async e => {
     if (open) { panel.innerHTML = notifHTML(c); const latest = allResults(c)[0]?.at; if (latest) markSeen(latest); paintBell(c); }
     return;
   }
+  if (t.closest("[data-theme-toggle]")) return setTheme(isDark() ? "light" : "dark");
+  const ts = t.closest("[data-theme-set]");
+  if (ts) return setTheme(ts.dataset.themeSet);
   const pal = t.closest("[data-palette]");
-  if (pal) { const [a, b, h] = pal.dataset.palette.split(","); $("cAccent").value = a; $("cAccent2").value = b; $("cAccent3").value = h; return previewPalette(); }
+  if (pal) return setPalette(pal.dataset.palette);
   const rf = t.closest("[data-rfilter]");
   if (rf) { resultsFilter = rf.dataset.rfilter; return render(); }
   const au = t.closest("[data-auth]");
@@ -1242,7 +1374,7 @@ document.addEventListener("animationend", e => {
 document.addEventListener("keydown", e => {
   const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
   if (e.key === "/" && !typing && $("globalSearch")) { e.preventDefault(); document.body.classList.add("searching"); return $("globalSearch").focus(); }
-  if (e.key === "Escape") { closeSearch(); closePanels(); document.body.classList.remove("nav-open"); return; }
+  if (e.key === "Escape") { closeModal(); closeSearch(); closePanels(); document.body.classList.remove("nav-open"); return; }
   if (e.key === "Enter" && e.target.id === "globalSearch") { e.preventDefault(); return document.querySelector("#searchResults .sr-item")?.click(); }
   const l = e.target.closest?.("label.upload");
   if (l && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); l.querySelector("input")?.click(); }
@@ -1250,7 +1382,8 @@ document.addEventListener("keydown", e => {
 
 document.addEventListener("input", e => {
   if (e.target.id === "globalSearch") return paintSearch();
-  if (/^cAccent[23]?$/.test(e.target.id)) return previewPalette();
+  if (e.target.id === "cAccent") return setPalette(e.target.value);
+  if (/^cAccent[23]$/.test(e.target.id)) return previewPalette();
   if (e.target.id === "peopleSearch") {
     msgs.peopleFilter = { text: e.target.value };
     const pos = e.target.selectionStart; render(); const el = $("peopleSearch"); if (el) { el.focus(); el.setSelectionRange(pos, pos); }
@@ -1266,6 +1399,7 @@ document.addEventListener("change", async e => {
     return refresh();
   }
   if (t.id === "spFormat" || t.id === "spDraws") return applySportFormat();
+  if (t.id === "exSport") { $("exOverall").checked = t.value === "all"; return; }
   if (t.dataset.upload === "avatar" && t.files[0]) return uploadAvatar(t.files[0]);
   if (t.dataset.upload && canSetup() && t.files[0]) return uploadImage(t.dataset.upload, t.files[0], t.dataset.team);
   if (t.dataset.roleFor && canSetup()) {
@@ -1313,6 +1447,7 @@ document.addEventListener("submit", async e => {
     recovering = false; delete msgs.authMsg; return start();
   }
 
+  if (f.id === "exportForm") return makeReport(false);
   if (f.id === "profileForm") {
     const full_name = $("pfName").value.trim().replace(/\s+/g, " "), college = $("pfCollege").value.trim();
     const member_type = f.querySelector('input[name="pfType"]:checked')?.value || "student";
